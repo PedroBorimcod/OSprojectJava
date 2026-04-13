@@ -8,7 +8,10 @@
       "Bash(git remote *)",
       "Bash(git add *)",
       "Bash(git commit *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(java *)",
+      "Bash(tasklist)",
+      "Bash(findstr *)"
     ]
   },
   "$version": 3
