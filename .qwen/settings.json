@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(javac *)",
+      "Bash(start *)",
+      "Bash(taskkill *)",
+      "Bash(git init)",
+      "Bash(git remote *)",
+      "Bash(git add *)"
+    ]
+  },
+  "$version": 3
+}
