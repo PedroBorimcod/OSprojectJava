@@ -5,17 +5,16 @@ import java.awt.*;
 import java.awt.event.*;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.ArrayList;
 import java.security.MessageDigest;
-import java.net.NetworkInterface;
-import java.util.Enumeration;
 import java.io.*;
 
 public class HackPanel extends JFrame {
 
     // ===== CORES - TEMA LIGHT PROFISSIONAL =====
     private static final Color BG_MAIN = new Color(245, 247, 250);
-    private static final Color BG_SIDEBAR = new Color(30, 30, 50);
-    private static final Color BG_SIDEBAR_HOVER = new Color(45, 45, 70);
+    private static final Color BG_SIDEBAR = new Color(15, 15, 35);
+    private static final Color BG_SIDEBAR_HOVER = new Color(30, 30, 55);
     private static final Color BG_CARD = Color.WHITE;
     private static final Color BG_INPUT = Color.WHITE;
     private static final Color BORDER = new Color(220, 225, 235);
@@ -27,41 +26,59 @@ public class HackPanel extends JFrame {
     private static final Color PURPLE = new Color(139, 92, 246);
     private static final Color CYAN = new Color(6, 182, 212);
     private static final Color ORANGE = new Color(249, 115, 22);
-    private static final Color PINK = new Color(236, 72, 153);
     private static final Color TEXT_PRIMARY = new Color(15, 15, 35);
     private static final Color TEXT_SECONDARY = new Color(100, 110, 130);
     private static final Color TEXT_MUTED = new Color(150, 155, 170);
 
-    // Componentes
-    private JPanel contentPanel;
-    private JPanel sidebar;
+    // ===== MODELO DE DADOS =====
+    static class OS {
+        String id, dataAbertura, dataConclusao, cliente, telefone, email;
+        String servico, tecnico, equipamento, descricao;
+        String status, prioridade, valor, garantia;
+
+        OS(String cliente, String telefone, String email, String servico,
+           String tecnico, String equipamento, String descricao,
+           String status, String prioridade, String valor, String garantia) {
+            this.id = String.format("OS-%04d", System.currentTimeMillis() % 10000);
+            this.dataAbertura = new SimpleDateFormat("dd/MM/yyyy HH:mm").format(new Date());
+            this.dataConclusao = "";
+            this.cliente = cliente;
+            this.telefone = telefone;
+            this.email = email;
+            this.servico = servico;
+            this.tecnico = tecnico;
+            this.equipamento = equipamento;
+            this.descricao = descricao;
+            this.status = status;
+            this.prioridade = prioridade;
+            this.valor = valor;
+            this.garantia = garantia;
+        }
+
+        Object[] toRow() {
+            return new Object[]{id, dataAbertura, dataConclusao, cliente, servico, tecnico, status, prioridade, valor, garantia};
+        }
+    }
+
+    // ===== COMPONENTES =====
+    private JPanel contentPanel, sidebar, headerPanel;
     private CardLayout cardLayout;
-    private JTable osTable, clientTable, techTable, finTable, userTable;
-    private DefaultTableModel osModel, clientModel, techModel, finModel, userModel;
+    private JTable osTable, finTable, clientTable, techTable, userTable;
+    private DefaultTableModel osModel, finModel, clientModel, techModel, userModel;
     private JTextArea detailsArea, activityLog;
     private JTextField searchOS;
     private JComboBox<String> filterStatus, filterPriority;
-    private int osCounter = 0;
+    private ArrayList<OS> osList = new ArrayList<>();
     private String currentUser = "";
     private boolean isAdmin = false;
+    private JLabel headerTitle;
 
-    // Dialogo OS
-    private JDialog osDialog;
-    private JTextField[] osFields;
-    private JComboBox<String> osStatus, osPriority, osEquip;
-    private JTextArea osDesc;
-    private boolean editing = false;
-    private int editRow = -1;
-
-    // Dados sample
-    private Object[][] sampleOS;
-
-    private static final String[] OS_COLS = {"OS#", "Data Abertura", "Data Conclusão", "Cliente", "Serviço", "Técnico", "Status", "Prioridade", "Valor", "Garantia"};
-    private static final String[] CLIENT_COLS = {"ID", "Nome", "Telefone", "Email", "Endereço", "Desde"};
-    private static final String[] TECH_COLS = {"ID", "Nome", "Especialidade", "OS Ativas", "Finalizadas", "Disponível"};
-    private static final String[] FIN_COLS = {"OS#", "Cliente", "Serviço", "Valor", "Status Pgto", "Data Conclusão"};
-    private static final String[] USER_COLS = {"ID", "Usuário", "Nome", "Email", "Nível", "Status", "Último Acesso"};
-    private static final String[] STATUS = {"ABERTA", "EM ANDAMENTO", "AGUARDANDO PEÇA", "FINALIZADA", "CANCELADA"};
+    private static final String[] OS_COLS = {"OS#", "Abertura", "Conclusão", "Cliente", "Serviço", "Técnico", "Status", "Prioridade", "Valor", "Garantia"};
+    private static final String[] CLIENT_COLS = {"ID", "Nome", "Telefone", "Email", "Desde"};
+    private static final String[] TECH_COLS = {"ID", "Nome", "Especialidade", "Ativas", "Finalizadas"};
+    private static final String[] FIN_COLS = {"OS#", "Cliente", "Serviço", "Valor", "Pgto", "Conclusão"};
+    private static final String[] USER_COLS = {"Usuário", "Nome", "Nível", "Status"};
+    private static final String[] STATUS = {"ABERTA", "EM ANDAMENTO", "AGUARDANDO PEÇA", "FINALIZADA"};
     private static final String[] PRIORIDADES = {"BAIXA", "MÉDIA", "ALTA", "URGENTE"};
     private static final String[] EQUIPS = {"Notebook", "Desktop", "Impressora", "Servidor", "Rede", "Smartphone", "Outro"};
 
@@ -71,35 +88,28 @@ public class HackPanel extends JFrame {
         this.isAdmin = admin;
         initFolders();
         setupFrame();
-        loadData();
+        loadSampleData();
     }
 
     private void initFolders() {
         new File(System.getProperty("user.home") + "/.techsuite").mkdirs();
-        File uf = new File(System.getProperty("user.home") + "/.techsuite/users.dat");
-        if (!uf.exists()) {
-            try { uf.createNewFile(); } catch (Exception ignored) {}
-        }
     }
 
-    // ===== FRAME PRINCIPAL =====
+    // ===== SETUP DO FRAME =====
     private void setupFrame() {
         setTitle("TechSuite Pro - " + currentUser);
-        setSize(1400, 850);
+        setSize(1450, 880);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
         setLayout(new BorderLayout());
         getContentPane().setBackground(BG_MAIN);
 
-        // Sidebar
         sidebar = createSidebar();
         add(sidebar, BorderLayout.WEST);
 
-        // Header
-        JPanel header = createHeader();
-        add(header, BorderLayout.NORTH);
+        headerPanel = createHeader();
+        add(headerPanel, BorderLayout.NORTH);
 
-        // Content com CardLayout
         cardLayout = new CardLayout();
         contentPanel = new JPanel(cardLayout);
         contentPanel.setBackground(BG_MAIN);
@@ -113,88 +123,79 @@ public class HackPanel extends JFrame {
         if (isAdmin) contentPanel.add("admin", buildAdminPanel());
 
         add(contentPanel, BorderLayout.CENTER);
-
-        // Update stat cards
-        SwingUtilities.invokeLater(() -> {
-            refreshDashboardStats();
-        });
     }
 
     // ===== SIDEBAR =====
     private JPanel createSidebar() {
         JPanel panel = new JPanel(new BorderLayout());
         panel.setBackground(BG_SIDEBAR);
-        panel.setPreferredSize(new Dimension(240, 0));
-        panel.setBorder(BorderFactory.createEmptyBorder());
+        panel.setPreferredSize(new Dimension(250, 0));
 
         // Logo
-        JPanel logoPanel = new JPanel(new BorderLayout());
-        logoPanel.setBackground(BG_SIDEBAR);
-        logoPanel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
+        JPanel logo = new JPanel(new BorderLayout());
+        logo.setBackground(BG_SIDEBAR);
+        logo.setBorder(BorderFactory.createEmptyBorder(25, 20, 25, 20));
 
-        JLabel logo = new JLabel(" TechSuite Pro");
-        logo.setFont(new Font("Segoe UI", Font.BOLD, 20));
-        logo.setForeground(Color.WHITE);
-        logoPanel.add(logo, BorderLayout.CENTER);
+        JLabel title = new JLabel(" TechSuite Pro");
+        title.setFont(new Font("Segoe UI", Font.BOLD, 20));
+        title.setForeground(Color.WHITE);
+        logo.add(title, BorderLayout.CENTER);
 
-        JLabel version = new JLabel(" v2.0");
-        version.setFont(new Font("Segoe UI", Font.PLAIN, 11));
-        version.setForeground(new Color(150, 150, 200));
-        logoPanel.add(version, BorderLayout.SOUTH);
-        panel.add(logoPanel, BorderLayout.NORTH);
+        JLabel sub = new JLabel(" Gestão de Serviços v2.0");
+        sub.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+        sub.setForeground(new Color(140, 140, 190));
+        logo.add(sub, BorderLayout.SOUTH);
+        panel.add(logo, BorderLayout.NORTH);
 
-        // Menu items
-        JPanel menuPanel = new JPanel();
-        menuPanel.setLayout(new BoxLayout(menuPanel, BoxLayout.Y_AXIS));
-        menuPanel.setBackground(BG_SIDEBAR);
-        menuPanel.setBorder(BorderFactory.createEmptyBorder(10, 12, 10, 12));
+        // Menu
+        JPanel menu = new JPanel();
+        menu.setLayout(new BoxLayout(menu, BoxLayout.Y_AXIS));
+        menu.setBackground(BG_SIDEBAR);
+        menu.setBorder(BorderFactory.createEmptyBorder(15, 12, 15, 12));
 
-        addMenuItem(menuPanel, "Dashboard", "home", ACCENT, true, e -> cardLayout.show(contentPanel, "dashboard"));
-        addMenuItem(menuPanel, "Ordens de Serviço", "ordens", Color.WHITE, false, e -> cardLayout.show(contentPanel, "ordens"));
-        addMenuItem(menuPanel, "Clientes", "clientes", Color.WHITE, false, e -> cardLayout.show(contentPanel, "clientes"));
-        addMenuItem(menuPanel, "Equipe", "equipe", Color.WHITE, false, e -> cardLayout.show(contentPanel, "equipe"));
-        addMenuItem(menuPanel, "Financeiro", "financeiro", Color.WHITE, false, e -> cardLayout.show(contentPanel, "financeiro"));
-        addMenuItem(menuPanel, "Relatórios", "relatorios", Color.WHITE, false, e -> cardLayout.show(contentPanel, "relatorios"));
-
+        addMenuItem(menu, "📊  Dashboard", true, e -> { showPage("dashboard"); updateHeader("Dashboard"); });
+        addMenuItem(menu, "📋  Ordens de Serviço", false, e -> { showPage("ordens"); updateHeader("Ordens de Serviço"); });
+        addMenuItem(menu, "👥  Clientes", false, e -> { showPage("clientes"); updateHeader("Clientes"); });
+        addMenuItem(menu, "🔧  Equipe Técnica", false, e -> { showPage("equipe"); updateHeader("Equipe Técnica"); });
+        addMenuItem(menu, "💰  Financeiro", false, e -> { showPage("financeiro"); updateHeader("Financeiro"); });
+        addMenuItem(menu, "📈  Relatórios", false, e -> { showPage("relatorios"); updateHeader("Relatórios"); });
         if (isAdmin) {
-            menuPanel.add(Box.createVerticalStrut(10));
-            addMenuItem(menuPanel, "Administração", "admin", PURPLE, false, e -> cardLayout.show(contentPanel, "admin"));
+            menu.add(Box.createVerticalStrut(8));
+            addMenuItem(menu, "⚙️  Administração", false, e -> { showPage("admin"); updateHeader("Administração"); });
         }
+        panel.add(menu, BorderLayout.CENTER);
 
-        panel.add(menuPanel, BorderLayout.CENTER);
+        // Footer
+        JPanel footer = new JPanel(new BorderLayout());
+        footer.setBackground(new Color(10, 10, 25));
+        footer.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
 
-        // Footer - user info
-        JPanel footerPanel = new JPanel(new BorderLayout());
-        footerPanel.setBackground(new Color(20, 20, 35));
-        footerPanel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
+        JLabel uLbl = new JLabel("  " + currentUser);
+        uLbl.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        uLbl.setForeground(Color.WHITE);
+        footer.add(uLbl, BorderLayout.CENTER);
 
-        JLabel userLbl = new JLabel(" " + currentUser);
-        userLbl.setFont(new Font("Segoe UI", Font.BOLD, 12));
-        userLbl.setForeground(Color.WHITE);
-        footerPanel.add(userLbl, BorderLayout.CENTER);
-
-        JLabel roleLbl = new JLabel(" " + (isAdmin ? "Administrador" : "Usuário"));
-        roleLbl.setFont(new Font("Segoe UI", Font.PLAIN, 10));
-        roleLbl.setForeground(new Color(150, 150, 200));
-        footerPanel.add(roleLbl, BorderLayout.SOUTH);
-
-        panel.add(footerPanel, BorderLayout.SOUTH);
+        JLabel rLbl = new JLabel("  " + (isAdmin ? "Administrador" : "Usuário"));
+        rLbl.setFont(new Font("Segoe UI", Font.PLAIN, 10));
+        rLbl.setForeground(new Color(140, 140, 190));
+        footer.add(rLbl, BorderLayout.SOUTH);
+        panel.add(footer, BorderLayout.SOUTH);
 
         return panel;
     }
 
-    private void addMenuItem(JPanel menu, String text, String icon, Color color, boolean active, ActionListener al) {
-        JPanel item = new JPanel(new BorderLayout(12, 0));
+    private void addMenuItem(JPanel menu, String text, boolean active, ActionListener al) {
+        JPanel item = new JPanel(new BorderLayout());
         item.setBackground(active ? BG_SIDEBAR_HOVER : BG_SIDEBAR);
         item.setBorder(BorderFactory.createCompoundBorder(
             BorderFactory.createMatteBorder(0, 3, 0, 0, active ? ACCENT : new Color(0,0,0,0)),
-            BorderFactory.createEmptyBorder(12, 15, 12, 15)));
+            BorderFactory.createEmptyBorder(13, 18, 13, 18)));
         item.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        item.setMaximumSize(new Dimension(220, 44));
+        item.setMaximumSize(new Dimension(230, 46));
 
-        JLabel lbl = new JLabel(" " + text);
+        JLabel lbl = new JLabel(text);
         lbl.setFont(new Font("Segoe UI", Font.PLAIN, 13));
-        lbl.setForeground(active ? Color.WHITE : new Color(180, 180, 210));
+        lbl.setForeground(active ? Color.WHITE : new Color(170, 170, 200));
         item.add(lbl, BorderLayout.CENTER);
 
         item.addMouseListener(new MouseAdapter() {
@@ -209,165 +210,149 @@ public class HackPanel extends JFrame {
 
     // ===== HEADER =====
     private JPanel createHeader() {
-        JPanel header = new JPanel(new BorderLayout());
-        header.setBackground(Color.WHITE);
-        header.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createMatteBorder(0, 0, 1, 0, BORDER),
-            BorderFactory.createEmptyBorder(12, 25, 12, 25)));
-        header.setPreferredSize(new Dimension(0, 56));
+        headerPanel = new JPanel(new BorderLayout());
+        headerPanel.setBackground(Color.WHITE);
+        headerPanel.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, BORDER));
+        headerPanel.setPreferredSize(new Dimension(0, 60));
 
-        // Page title
-        JLabel title = new JLabel("Dashboard");
-        title.setFont(new Font("Segoe UI", Font.BOLD, 18));
-        title.setForeground(TEXT_PRIMARY);
-        header.add(title, BorderLayout.WEST);
+        headerTitle = new JLabel("  Dashboard");
+        headerTitle.setFont(new Font("Segoe UI", Font.BOLD, 20));
+        headerTitle.setForeground(TEXT_PRIMARY);
+        headerPanel.add(headerTitle, BorderLayout.CENTER);
 
-        // Right side
-        JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 15, 0));
+        JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 15, 15));
         right.setBackground(Color.WHITE);
 
-        JLabel dateLbl = new JLabel(new SimpleDateFormat("dd/MM/yyyy HH:mm").format(new Date()));
+        JLabel dateLbl = new JLabel(new SimpleDateFormat("dd/MM/yyyy  HH:mm").format(new Date()));
         dateLbl.setFont(new Font("Segoe UI", Font.PLAIN, 12));
         dateLbl.setForeground(TEXT_SECONDARY);
         right.add(dateLbl);
 
-        JButton logoutBtn = new JButton(" Sair");
-        logoutBtn.setFont(new Font("Segoe UI", Font.BOLD, 11));
-        logoutBtn.setForeground(Color.WHITE);
-        logoutBtn.setBackground(DANGER);
-        logoutBtn.setFocusPainted(false);
-        logoutBtn.setBorderPainted(false);
-        logoutBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        logoutBtn.setPreferredSize(new Dimension(70, 30));
+        JButton logoutBtn = new JButton("  Sair");
+        styleBtn(logoutBtn, DANGER);
+        logoutBtn.setPreferredSize(new Dimension(80, 32));
         logoutBtn.addActionListener(e -> {
-            if (JOptionPane.showConfirmDialog(this, "Deseja sair?", "Logout", JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION)
+            if (JOptionPane.showConfirmDialog(this, "Deseja sair do sistema?", "Logout", JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION)
                 System.exit(0);
         });
         right.add(logoutBtn);
 
-        header.add(right, BorderLayout.EAST);
+        headerPanel.add(right, BorderLayout.EAST);
+        return headerPanel;
+    }
 
-        return header;
+    private void updateHeader(String title) {
+        headerTitle.setText("  " + title);
+    }
+
+    private void showPage(String page) {
+        cardLayout.show(contentPanel, page);
     }
 
     // ===== DASHBOARD =====
     private JPanel buildDashboard() {
         JPanel panel = new JPanel(new BorderLayout(20, 20));
         panel.setBackground(BG_MAIN);
-        panel.setBorder(BorderFactory.createEmptyBorder(20, 25, 20, 25));
+        panel.setBorder(BorderFactory.createEmptyBorder(25, 25, 25, 25));
 
         // Welcome
-        JPanel welcome = new JPanel(new BorderLayout());
+        JPanel welcome = new JPanel(new BorderLayout(5, 5));
         welcome.setBackground(BG_MAIN);
-        welcome.setBorder(BorderFactory.createEmptyBorder(0, 0, 5, 0));
 
-        JLabel welcomeLbl = new JLabel("Bom dia, " + currentUser + "!");
-        welcomeLbl.setFont(new Font("Segoe UI", Font.BOLD, 22));
-        welcomeLbl.setForeground(TEXT_PRIMARY);
-        welcome.add(welcomeLbl, BorderLayout.CENTER);
+        JLabel wLbl = new JLabel("Bom dia, " + currentUser + "! 👋");
+        wLbl.setFont(new Font("Segoe UI", Font.BOLD, 24));
+        wLbl.setForeground(TEXT_PRIMARY);
+        welcome.add(wLbl, BorderLayout.CENTER);
 
-        JLabel dateLbl = new JLabel(new SimpleDateFormat("EEEE, dd 'de' MMMM 'de' yyyy").format(new Date()));
-        dateLbl.setFont(new Font("Segoe UI", Font.PLAIN, 13));
-        dateLbl.setForeground(TEXT_SECONDARY);
-        welcome.add(dateLbl, BorderLayout.SOUTH);
-
+        JLabel dLbl = new JLabel(new SimpleDateFormat("EEEE, dd 'de' MMMM 'de' yyyy").format(new Date()));
+        dLbl.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        dLbl.setForeground(TEXT_SECONDARY);
+        welcome.add(dLbl, BorderLayout.SOUTH);
         panel.add(welcome, BorderLayout.NORTH);
 
-        // Stats cards
+        // Stats
         JPanel statsPanel = new JPanel(new GridLayout(1, 5, 15, 0));
         statsPanel.setBackground(BG_MAIN);
-        statsPanel.setName("statsPanel");
+        statsPanel.setBorder(BorderFactory.createEmptyBorder(10, 0, 10, 0));
 
-        statsPanel.add(createStatCard("OS Abertas", "0", WARNING, "\uD83D\uDCCB"));
-        statsPanel.add(createStatCard("Em Andamento", "0", INFO, "\uD83D\uDD27"));
-        statsPanel.add(createStatCard("Finalizadas", "0", SUCCESS, "\u2705"));
-        statsPanel.add(createStatCard("Faturamento", "R$ 0", SUCCESS, "\uD83D\uDCB0"));
-        statsPanel.add(createStatCard("Clientes", "0", PURPLE, "\uD83D\uDC65"));
+        JPanel s1 = statCard("OS Abertas", String.valueOf(countOS("ABERTA")), WARNING, "📋");
+        JPanel s2 = statCard("Em Andamento", String.valueOf(countOS("EM ANDAMENTO")), INFO, "🔧");
+        JPanel s3 = statCard("Finalizadas Hoje", String.valueOf(countOS("FINALIZADA")), SUCCESS, "✅");
+        JPanel s4 = statCard("Faturamento", totalFaturamento(), SUCCESS, "💰");
+        JPanel s5 = statCard("Clientes", String.valueOf(clientModel.getRowCount()), PURPLE, "👥");
 
+        statsPanel.add(s1); statsPanel.add(s2); statsPanel.add(s3); statsPanel.add(s4); statsPanel.add(s5);
         panel.add(statsPanel, BorderLayout.CENTER);
 
-        // Bottom section
+        // Bottom
         JPanel bottom = new JPanel(new GridLayout(1, 2, 20, 0));
         bottom.setBackground(BG_MAIN);
-        bottom.setBorder(BorderFactory.createEmptyBorder(5, 0, 0, 0));
 
-        // Quick actions
-        JPanel actions = createCard("Ações Rápidas", ACCENT);
-        JPanel actionsGrid = new JPanel(new GridLayout(2, 2, 10, 10));
-        actionsGrid.setBackground(BG_CARD);
-        actionsGrid.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-        actionsGrid.add(quickBtn("➕ Nova OS", ACCENT, e -> { cardLayout.show(contentPanel, "ordens"); openOS(false); }));
-        actionsGrid.add(quickBtn("👤 Novo Cliente", SUCCESS, e -> { cardLayout.show(contentPanel, "clientes"); addClient(); }));
-        actionsGrid.add(quickBtn("🔧 Novo Técnico", PURPLE, e -> { cardLayout.show(contentPanel, "equipe"); addTech(); }));
-        actionsGrid.add(quickBtn("📊 Relatório", CYAN, e -> { cardLayout.show(contentPanel, "relatorios"); printFullReport(); }));
-        actions.add(actionsGrid, BorderLayout.CENTER);
+        JPanel actions = card("Ações Rápidas", ACCENT);
+        JPanel actGrid = new JPanel(new GridLayout(2, 2, 10, 10));
+        actGrid.setBackground(BG_CARD);
+        actGrid.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+        actGrid.add(qBtn("➕ Nova OS", ACCENT, e -> { showPage("ordens"); openOSDialog(); }));
+        actGrid.add(qBtn("👤 Novo Cliente", SUCCESS, e -> { showPage("clientes"); addClient(); }));
+        actGrid.add(qBtn("🔧 Novo Técnico", PURPLE, e -> { showPage("equipe"); addTech(); }));
+        actGrid.add(qBtn("📊 Relatório", CYAN, e -> { showPage("relatorios"); }));
+        actions.add(actGrid, BorderLayout.CENTER);
 
-        // Activity log
-        JPanel activity = createCard("Atividades Recentes", SUCCESS);
+        JPanel act = card("Atividades Recentes", SUCCESS);
         activityLog = new JTextArea();
         activityLog.setFont(new Font("Consolas", Font.PLAIN, 11));
         activityLog.setForeground(TEXT_SECONDARY);
         activityLog.setBackground(Color.WHITE);
         activityLog.setEditable(false);
-        activityLog.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
-        activity.add(new JScrollPane(activityLog), BorderLayout.CENTER);
+        activityLog.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
+        act.add(new JScrollPane(activityLog), BorderLayout.CENTER);
 
         bottom.add(actions);
-        bottom.add(activity);
+        bottom.add(act);
         panel.add(bottom, BorderLayout.SOUTH);
 
         return panel;
     }
 
-    private JPanel createStatCard(String title, String value, Color accent, String icon) {
-        JPanel card = new JPanel(new BorderLayout(12, 6));
+    private JPanel statCard(String title, String value, Color accent, String icon) {
+        JPanel card = new JPanel(new BorderLayout(10, 5));
         card.setBackground(BG_CARD);
-        card.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createCompoundBorder(
-                new ShadowBorder(accent),
-                BorderFactory.createEmptyBorder(20, 20, 20, 20)),
-            null));
+        card.setBorder(BorderFactory.createCompoundBorder(new CardBorder(accent), BorderFactory.createEmptyBorder(18, 18, 18, 18)));
 
-        // Top
         JPanel top = new JPanel(new BorderLayout());
         top.setBackground(BG_CARD);
+        JLabel ic = new JLabel(icon);
+        ic.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 26));
+        top.add(ic, BorderLayout.WEST);
 
-        JLabel iconLbl = new JLabel(icon);
-        iconLbl.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 28));
-        top.add(iconLbl, BorderLayout.WEST);
-
-        JLabel valLbl = new JLabel(value);
-        valLbl.setFont(new Font("Segoe UI", Font.BOLD, 24));
-        valLbl.setForeground(accent);
-        valLbl.setHorizontalAlignment(SwingConstants.RIGHT);
-        top.add(valLbl, BorderLayout.EAST);
-
+        JLabel v = new JLabel(value);
+        v.setFont(new Font("Segoe UI", Font.BOLD, 22));
+        v.setForeground(accent);
+        v.setHorizontalAlignment(SwingConstants.RIGHT);
+        top.add(v, BorderLayout.EAST);
         card.add(top, BorderLayout.CENTER);
 
-        JLabel titleLbl = new JLabel(title);
-        titleLbl.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        titleLbl.setForeground(TEXT_SECONDARY);
-        card.add(titleLbl, BorderLayout.SOUTH);
+        JLabel t = new JLabel(title);
+        t.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        t.setForeground(TEXT_SECONDARY);
+        card.add(t, BorderLayout.SOUTH);
 
         return card;
     }
 
-    private JPanel createCard(String title, Color accent) {
-        JPanel card = new JPanel(new BorderLayout(0, 10));
-        card.setBackground(BG_CARD);
-        card.setBorder(BorderFactory.createCompoundBorder(
-            new ShadowBorder(accent),
-            BorderFactory.createEmptyBorder(15, 18, 15, 18)));
+    private JPanel card(String title, Color accent) {
+        JPanel c = new JPanel(new BorderLayout(0, 10));
+        c.setBackground(BG_CARD);
+        c.setBorder(BorderFactory.createCompoundBorder(new CardBorder(accent), BorderFactory.createEmptyBorder(15, 18, 15, 18)));
 
-        JLabel titleLbl = new JLabel(" " + title);
-        titleLbl.setFont(new Font("Segoe UI", Font.BOLD, 14));
-        titleLbl.setForeground(accent);
-        card.add(titleLbl, BorderLayout.NORTH);
-
-        return card;
+        JLabel t = new JLabel(" " + title);
+        t.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        t.setForeground(accent);
+        c.add(t, BorderLayout.NORTH);
+        return c;
     }
 
-    private JButton quickBtn(String text, Color accent, ActionListener al) {
+    private JButton qBtn(String text, Color accent, ActionListener al) {
         JButton b = new JButton(text);
         b.setFont(new Font("Segoe UI", Font.BOLD, 12));
         b.setForeground(Color.WHITE);
@@ -387,90 +372,86 @@ public class HackPanel extends JFrame {
     private JPanel buildOSPanel() {
         JPanel panel = new JPanel(new BorderLayout(15, 15));
         panel.setBackground(BG_MAIN);
-        panel.setBorder(BorderFactory.createEmptyBorder(20, 25, 20, 25));
+        panel.setBorder(BorderFactory.createEmptyBorder(25, 25, 25, 25));
 
-        // Title
-        JLabel title = new JLabel("Ordens de Serviço");
+        JLabel title = new JLabel("📋 Gerenciar Ordens de Serviço");
         title.setFont(new Font("Segoe UI", Font.BOLD, 20));
         title.setForeground(TEXT_PRIMARY);
         panel.add(title, BorderLayout.NORTH);
 
-        // Filter bar
-        JPanel filterBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 0));
-        filterBar.setBackground(Color.WHITE);
-        filterBar.setBorder(BorderFactory.createCompoundBorder(
-            new ShadowBorder(ACCENT),
-            BorderFactory.createEmptyBorder(12, 15, 12, 15)));
+        // Toolbar
+        JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        toolbar.setBackground(Color.WHITE);
+        toolbar.setBorder(BorderFactory.createCompoundBorder(new CardBorder(ACCENT), BorderFactory.createEmptyBorder(12, 15, 12, 15)));
 
-        filterBar.add(lbl("Buscar:"));
-        searchOS = new JTextField(18);
+        toolbar.add(lbl("🔍 Buscar:"));
+        searchOS = new JTextField(15);
         searchOS.setFont(new Font("Segoe UI", Font.PLAIN, 12));
         searchOS.setBackground(BG_INPUT);
-        searchOS.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(BORDER), BorderFactory.createEmptyBorder(6, 10, 6, 10)));
+        searchOS.setBorder(BorderFactory.createLineBorder(BORDER));
         searchOS.addKeyListener(new KeyAdapter() { public void keyReleased(KeyEvent e) { filterOS(); }});
-        filterBar.add(searchOS);
+        toolbar.add(searchOS);
 
-        filterBar.add(Box.createHorizontalStrut(8));
-        filterBar.add(lbl("Status:"));
-        filterStatus = new JComboBox<>(new String[]{"TODOS", "ABERTA", "EM ANDAMENTO", "AGUARDANDO PEÇA", "FINALIZADA", "CANCELADA"});
+        toolbar.add(Box.createHorizontalStrut(8));
+        toolbar.add(lbl("Status:"));
+        filterStatus = new JComboBox<>(new String[]{"TODOS", "ABERTA", "EM ANDAMENTO", "AGUARDANDO PEÇA", "FINALIZADA"});
         filterStatus.setFont(new Font("Segoe UI", Font.PLAIN, 11));
         filterStatus.setBackground(Color.WHITE);
         filterStatus.addActionListener(e -> filterOS());
-        filterBar.add(filterStatus);
+        toolbar.add(filterStatus);
 
-        filterBar.add(Box.createHorizontalStrut(8));
-        filterBar.add(lbl("Prioridade:"));
+        toolbar.add(Box.createHorizontalStrut(8));
+        toolbar.add(lbl("Prioridade:"));
         filterPriority = new JComboBox<>(new String[]{"TODAS", "BAIXA", "MÉDIA", "ALTA", "URGENTE"});
         filterPriority.setFont(new Font("Segoe UI", Font.PLAIN, 11));
         filterPriority.setBackground(Color.WHITE);
         filterPriority.addActionListener(e -> filterOS());
-        filterBar.add(filterPriority);
+        toolbar.add(filterPriority);
 
         JButton newBtn = btnPrimary("➕ Nova OS", ACCENT);
-        newBtn.addActionListener(e -> openOS(false));
-        filterBar.add(newBtn);
+        newBtn.addActionListener(e -> openOSDialog());
+        toolbar.add(newBtn);
 
-        panel.add(filterBar, BorderLayout.CENTER);
+        panel.add(toolbar, BorderLayout.CENTER);
 
         // Table
         osModel = new DefaultTableModel(OS_COLS, 0) { public boolean isCellEditable(int r, int c) { return false; }};
         osTable = createTable(osModel);
-        setColWidths(osTable, new int[]{70, 100, 100, 130, 150, 100, 95, 75, 75, 65});
+        setColWidths(osTable, new int[]{75, 105, 105, 130, 140, 100, 100, 75, 75, 65});
         osTable.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting() && osTable.getSelectedRow() != -1) showDetails(osTable.getSelectedRow());
         });
 
         JScrollPane scroll = new JScrollPane(osTable);
-        scroll.setBorder(BorderFactory.createCompoundBorder(new ShadowBorder(ACCENT), null));
+        scroll.setBorder(BorderFactory.createCompoundBorder(new CardBorder(ACCENT), null));
 
-        JPanel centerPanel = new JPanel(new BorderLayout(0, 10));
-        centerPanel.setBackground(BG_MAIN);
-        centerPanel.add(scroll, BorderLayout.CENTER);
+        JPanel center = new JPanel(new BorderLayout(0, 12));
+        center.setBackground(BG_MAIN);
 
         // Details
-        JPanel det = createCard("Detalhes da Ordem", ACCENT);
+        JPanel det = card("📄 Detalhes da Ordem", ACCENT);
         detailsArea = new JTextArea();
         detailsArea.setFont(new Font("Consolas", Font.PLAIN, 11));
         detailsArea.setForeground(TEXT_SECONDARY);
         detailsArea.setBackground(Color.WHITE);
         detailsArea.setEditable(false);
         detailsArea.setLineWrap(true);
-        detailsArea.setBorder(BorderFactory.createEmptyBorder(5, 8, 5, 8));
+        detailsArea.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
         det.add(new JScrollPane(detailsArea), BorderLayout.CENTER);
-        det.setPreferredSize(new Dimension(0, 120));
+        det.setPreferredSize(new Dimension(0, 110));
 
-        centerPanel.add(det, BorderLayout.SOUTH);
-        panel.add(centerPanel, BorderLayout.CENTER);
+        center.add(scroll, BorderLayout.CENTER);
+        center.add(det, BorderLayout.SOUTH);
+        panel.add(center, BorderLayout.CENTER);
 
-        // Action bar
-        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 8));
+        // Actions
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         actions.setBackground(BG_MAIN);
-        actions.add(btnSecondary("✏ Editar", WARNING, e -> openOS(true)));
-        actions.add(btnSecondary("🗑 Excluir", DANGER, e -> deleteOS()));
-        actions.add(btnSecondary("🖨 Imprimir", SUCCESS, e -> printOS()));
-        actions.add(btnSecondary("📤 Exportar", PURPLE, e -> exportOS()));
-        actions.add(btnSecondary("📊 Relatório", CYAN, e -> printFullReport()));
+        actions.add(btnSecondary("✏️ Editar", WARNING, e -> editSelectedOS()));
+        actions.add(btnSecondary("✅ Finalizar", SUCCESS, e -> finalizeSelectedOS()));
+        actions.add(btnSecondary("🗑️ Excluir", DANGER, e -> deleteSelectedOS()));
+        actions.add(btnSecondary("🖨️ Imprimir", INFO, e -> printSelectedOS()));
+        actions.add(btnSecondary("📤 Exportar CSV", PURPLE, e -> exportData(osModel, OS_COLS, "ordens.csv")));
         panel.add(actions, BorderLayout.SOUTH);
 
         return panel;
@@ -480,16 +461,16 @@ public class HackPanel extends JFrame {
     private JPanel buildClientPanel() {
         JPanel panel = new JPanel(new BorderLayout(15, 15));
         panel.setBackground(BG_MAIN);
-        panel.setBorder(BorderFactory.createEmptyBorder(20, 25, 20, 25));
+        panel.setBorder(BorderFactory.createEmptyBorder(25, 25, 25, 25));
 
-        JLabel title = new JLabel("Clientes");
+        JLabel title = new JLabel("👥 Gestão de Clientes");
         title.setFont(new Font("Segoe UI", Font.BOLD, 20));
         title.setForeground(TEXT_PRIMARY);
         panel.add(title, BorderLayout.NORTH);
 
-        JPanel topBar = new JPanel(new BorderLayout(10, 0));
+        JPanel topBar = new JPanel(new BorderLayout());
         topBar.setBackground(Color.WHITE);
-        topBar.setBorder(BorderFactory.createCompoundBorder(new ShadowBorder(SUCCESS), BorderFactory.createEmptyBorder(12, 15, 12, 15)));
+        topBar.setBorder(BorderFactory.createCompoundBorder(new CardBorder(SUCCESS), BorderFactory.createEmptyBorder(12, 15, 12, 15)));
 
         JButton addBtn = btnPrimary("➕ Novo Cliente", SUCCESS);
         addBtn.addActionListener(e -> addClient());
@@ -497,14 +478,12 @@ public class HackPanel extends JFrame {
         panel.add(topBar, BorderLayout.CENTER);
 
         clientModel = new DefaultTableModel(CLIENT_COLS, 0) { public boolean isCellEditable(int r, int c) { return false; }};
-        clientTable = createTable(clientModel);
-        panel.add(new JScrollPane(clientTable), BorderLayout.CENTER);
+        panel.add(new JScrollPane(createTable(clientModel)), BorderLayout.CENTER);
 
-        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 8));
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         actions.setBackground(BG_MAIN);
-        actions.add(btnSecondary("✏ Editar", WARNING, e -> editClient()));
-        actions.add(btnSecondary("🗑 Excluir", DANGER, e -> deleteClient()));
-        actions.add(btnSecondary("📤 Exportar", PURPLE, e -> exportClients()));
+        actions.add(btnSecondary("🗑️ Excluir", DANGER, e -> deleteClient()));
+        actions.add(btnSecondary("📤 Exportar", PURPLE, e -> exportData(clientModel, CLIENT_COLS, "clientes.csv")));
         panel.add(actions, BorderLayout.SOUTH);
 
         return panel;
@@ -514,16 +493,16 @@ public class HackPanel extends JFrame {
     private JPanel buildTechPanel() {
         JPanel panel = new JPanel(new BorderLayout(15, 15));
         panel.setBackground(BG_MAIN);
-        panel.setBorder(BorderFactory.createEmptyBorder(20, 25, 20, 25));
+        panel.setBorder(BorderFactory.createEmptyBorder(25, 25, 25, 25));
 
-        JLabel title = new JLabel("Equipe Técnica");
+        JLabel title = new JLabel("🔧 Equipe Técnica");
         title.setFont(new Font("Segoe UI", Font.BOLD, 20));
         title.setForeground(TEXT_PRIMARY);
         panel.add(title, BorderLayout.NORTH);
 
         JPanel topBar = new JPanel(new BorderLayout());
         topBar.setBackground(Color.WHITE);
-        topBar.setBorder(BorderFactory.createCompoundBorder(new ShadowBorder(PURPLE), BorderFactory.createEmptyBorder(12, 15, 12, 15)));
+        topBar.setBorder(BorderFactory.createCompoundBorder(new CardBorder(PURPLE), BorderFactory.createEmptyBorder(12, 15, 12, 15)));
 
         JButton addBtn = btnPrimary("➕ Novo Técnico", PURPLE);
         addBtn.addActionListener(e -> addTech());
@@ -531,15 +510,12 @@ public class HackPanel extends JFrame {
         panel.add(topBar, BorderLayout.CENTER);
 
         techModel = new DefaultTableModel(TECH_COLS, 0) { public boolean isCellEditable(int r, int c) { return false; }};
-        techTable = createTable(techModel);
-        panel.add(new JScrollPane(techTable), BorderLayout.CENTER);
+        panel.add(new JScrollPane(createTable(techModel)), BorderLayout.CENTER);
 
-        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 8));
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         actions.setBackground(BG_MAIN);
-        actions.add(btnSecondary("✏ Editar", WARNING, e -> editTech()));
-        actions.add(btnSecondary("🗑 Excluir", DANGER, e -> deleteTech()));
-        actions.add(btnSecondary("📅 Agenda", INFO, e -> showSchedule()));
-        actions.add(btnSecondary("📤 Exportar", CYAN, e -> exportTechs()));
+        actions.add(btnSecondary("🗑️ Excluir", DANGER, e -> deleteTech()));
+        actions.add(btnSecondary("📤 Exportar", CYAN, e -> exportData(techModel, TECH_COLS, "equipe.csv")));
         panel.add(actions, BorderLayout.SOUTH);
 
         return panel;
@@ -549,33 +525,31 @@ public class HackPanel extends JFrame {
     private JPanel buildFinancePanel() {
         JPanel panel = new JPanel(new BorderLayout(15, 15));
         panel.setBackground(BG_MAIN);
-        panel.setBorder(BorderFactory.createEmptyBorder(20, 25, 20, 25));
+        panel.setBorder(BorderFactory.createEmptyBorder(25, 25, 25, 25));
 
-        JLabel title = new JLabel("Financeiro");
+        JLabel title = new JLabel("💰 Painel Financeiro");
         title.setFont(new Font("Segoe UI", Font.BOLD, 20));
         title.setForeground(TEXT_PRIMARY);
         panel.add(title, BorderLayout.NORTH);
 
-        // Stats
         JPanel stats = new JPanel(new GridLayout(1, 4, 12, 0));
         stats.setBackground(BG_MAIN);
-        stats.add(createStatCard("Receita Total", "R$ 0", SUCCESS, "\uD83D\uDCB5"));
-        stats.add(createStatCard("A Receber", "R$ 0", WARNING, "\u23F3"));
-        stats.add(createStatCard("Recebido", "R$ 0", INFO, "\u2705"));
-        stats.add(createStatCard("Ticket Médio", "R$ 0", PURPLE, "\uD83D\uDCCA"));
+        stats.add(statCard("Receita Total", totalFaturamento(), SUCCESS, "💵"));
+        stats.add(statCard("A Receber", totalPendente(), WARNING, "⏳"));
+        stats.add(statCard("Recebido", totalRecebido(), INFO, "✅"));
+        stats.add(statCard("Ticket Médio", ticketMedio(), PURPLE, "📊"));
         panel.add(stats, BorderLayout.CENTER);
 
         finModel = new DefaultTableModel(FIN_COLS, 0) { public boolean isCellEditable(int r, int c) { return false; }};
         finTable = createTable(finModel);
         JScrollPane scroll = new JScrollPane(finTable);
-        scroll.setBorder(BorderFactory.createCompoundBorder(new ShadowBorder(INFO), null));
+        scroll.setBorder(BorderFactory.createCompoundBorder(new CardBorder(INFO), null));
         panel.add(scroll, BorderLayout.CENTER);
 
-        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 8));
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         actions.setBackground(BG_MAIN);
-        actions.add(btnSecondary("📊 Relatório", SUCCESS, e -> printFullReport()));
-        actions.add(btnSecondary("🖨 Imprimir", INFO, e -> printFinance()));
-        actions.add(btnSecondary("📤 CSV", PURPLE, e -> exportFinance()));
+        actions.add(btnSecondary("📊 Relatório", SUCCESS, e -> showFinanceReport()));
+        actions.add(btnSecondary("📤 Exportar", PURPLE, e -> exportData(finModel, FIN_COLS, "financeiro.csv")));
         panel.add(actions, BorderLayout.SOUTH);
 
         return panel;
@@ -585,63 +559,47 @@ public class HackPanel extends JFrame {
     private JPanel buildReportPanel() {
         JPanel panel = new JPanel(new GridLayout(2, 3, 15, 15));
         panel.setBackground(BG_MAIN);
-        panel.setBorder(BorderFactory.createEmptyBorder(20, 25, 20, 25));
+        panel.setBorder(BorderFactory.createEmptyBorder(25, 25, 25, 25));
 
-        panel.add(reportCard("Relatório de Ordens", "Exporta todas as ordens com filtros por período, status e técnico.", ACCENT, "\uD83D\uDCCB", e -> printFullReport()));
-        panel.add(reportCard("Relatório de Clientes", "Lista completa com histórico de serviços e total gasto.", SUCCESS, "\uD83D\uDC65", e -> exportClients()));
-        panel.add(reportCard("Relatório da Equipe", "Desempenho individual dos técnicos com métricas.", WARNING, "\uD83D\uDD27", e -> exportTechs()));
-        panel.add(reportCard("Relatório Financeiro", "Receitas, despesas, lucro e análise de rentabilidade.", PURPLE, "\uD83D\uDCB0", e -> printFinance()));
-        panel.add(reportCard("Info do Sistema", "Informações do hardware, sistema e rede.", CYAN, "\uD83D\uDCBB", e -> showSystemInfo()));
-        panel.add(reportCard("Backup de Dados", "Realiza backup completo de todos os dados.", ORANGE, "\uD83D\uDCBE", e -> doBackup()));
+        panel.add(reportCard("📋 Relatório de Ordens", "Todas as ordens com detalhes e filtros", ACCENT, e -> showFullReport()));
+        panel.add(reportCard("👥 Relatório de Clientes", "Lista completa de clientes cadastrados", SUCCESS, e -> showClientReport()));
+        panel.add(reportCard("🔧 Relatório da Equipe", "Desempenho dos técnicos", WARNING, e -> showTechReport()));
+        panel.add(reportCard("💰 Relatório Financeiro", "Receitas, despesas e lucros", PURPLE, e -> showFinanceReport()));
+        panel.add(reportCard("💾 Backup de Dados", "Backup completo do sistema", ORANGE, e -> doBackup()));
+        panel.add(reportCard("ℹ️ Info do Sistema", "Dados do sistema e hardware", CYAN, e -> showSystemInfo()));
 
         return panel;
     }
 
-    private JPanel reportCard(String title, String desc, Color accent, String icon, ActionListener al) {
-        JPanel card = new JPanel(new BorderLayout(12, 10));
-        card.setBackground(BG_CARD);
-        card.setBorder(BorderFactory.createCompoundBorder(new ShadowBorder(accent), BorderFactory.createEmptyBorder(18, 18, 18, 18)));
-        card.setCursor(new Cursor(Cursor.HAND_CURSOR));
+    private JPanel reportCard(String title, String desc, Color accent, ActionListener al) {
+        JPanel c = new JPanel(new BorderLayout(12, 10));
+        c.setBackground(BG_CARD);
+        c.setBorder(BorderFactory.createCompoundBorder(new CardBorder(accent), BorderFactory.createEmptyBorder(20, 20, 20, 20)));
+        c.setCursor(new Cursor(Cursor.HAND_CURSOR));
 
-        JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
-        top.setBackground(BG_CARD);
-        JLabel ic = new JLabel(icon);
-        ic.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 30));
-        top.add(ic);
         JLabel t = new JLabel(title);
-        t.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        t.setFont(new Font("Segoe UI", Font.BOLD, 15));
         t.setForeground(TEXT_PRIMARY);
-        top.add(t);
-        card.add(top, BorderLayout.NORTH);
+        c.add(t, BorderLayout.NORTH);
 
-        JLabel d = new JLabel("<html><body style='width:250px'><span style='color:#646E82'>" + desc + "</span></body></html>");
+        JLabel d = new JLabel("<html><body style='width:260px'><span style='color:#646E82'>" + desc + "</span></body></html>");
         d.setFont(new Font("Segoe UI", Font.PLAIN, 11));
-        card.add(d, BorderLayout.CENTER);
+        c.add(d, BorderLayout.CENTER);
 
-        JButton b = new JButton("Gerar Relatório");
-        b.setFont(new Font("Segoe UI", Font.BOLD, 11));
-        b.setForeground(Color.WHITE);
-        b.setBackground(accent);
-        b.setFocusPainted(false);
-        b.setBorderPainted(false);
-        b.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        JButton b = new JButton("Abrir");
+        styleBtn(b, accent);
         b.addActionListener(al);
-        b.addMouseListener(new MouseAdapter() {
-            public void mouseEntered(MouseEvent e) { b.setBackground(accent.brighter()); }
-            public void mouseExited(MouseEvent e) { b.setBackground(accent); }
-        });
-        card.add(b, BorderLayout.SOUTH);
-
-        return card;
+        c.add(b, BorderLayout.SOUTH);
+        return c;
     }
 
     // ===== ADMIN =====
     private JPanel buildAdminPanel() {
         JPanel panel = new JPanel(new BorderLayout(15, 15));
         panel.setBackground(BG_MAIN);
-        panel.setBorder(BorderFactory.createEmptyBorder(20, 25, 20, 25));
+        panel.setBorder(BorderFactory.createEmptyBorder(25, 25, 25, 25));
 
-        JLabel title = new JLabel("Administração de Usuários");
+        JLabel title = new JLabel("⚙️ Administração de Usuários");
         title.setFont(new Font("Segoe UI", Font.BOLD, 20));
         title.setForeground(TEXT_PRIMARY);
         panel.add(title, BorderLayout.NORTH);
@@ -650,12 +608,9 @@ public class HackPanel extends JFrame {
         userTable = createTable(userModel);
         panel.add(new JScrollPane(userTable), BorderLayout.CENTER);
 
-        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 8));
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         actions.setBackground(BG_MAIN);
         actions.add(btnPrimary("➕ Novo Usuário", ACCENT, e -> addUserDialog()));
-        actions.add(btnSecondary("✅ Ativar", SUCCESS, e -> toggleUserStatus(true)));
-        actions.add(btnSecondary("⛔ Bloquear", DANGER, e -> toggleUserStatus(false)));
-        actions.add(btnSecondary("🗑 Excluir", WARNING, e -> deleteUser()));
         actions.add(btnSecondary("🔄 Atualizar", INFO, e -> loadUsers()));
         panel.add(actions, BorderLayout.SOUTH);
 
@@ -663,168 +618,300 @@ public class HackPanel extends JFrame {
         return panel;
     }
 
-    // ===== DIÁLOGO OS =====
-    private void openOS(boolean edit) {
-        if (edit && osTable.getSelectedRow() == -1) {
-            JOptionPane.showMessageDialog(this, "Selecione uma OS.", "Atenção", JOptionPane.WARNING_MESSAGE);
-            return;
-        }
-        editing = edit;
-        editRow = edit ? osTable.getSelectedRow() : -1;
-
-        osDialog = new JDialog(this, edit ? "Editar OS" : "Nova OS", true);
-        osDialog.setSize(520, 600);
-        osDialog.setLocationRelativeTo(this);
-        osDialog.getContentPane().setBackground(Color.WHITE);
-        osDialog.setLayout(new BorderLayout(10, 10));
+    // ===== DIÁLOGO DE OS =====
+    private void openOSDialog() {
+        JDialog dlg = new JDialog(this, "➕ Nova Ordem de Serviço", true);
+        dlg.setSize(580, 680);
+        dlg.setLocationRelativeTo(this);
+        dlg.getContentPane().setBackground(Color.WHITE);
+        dlg.setLayout(new BorderLayout());
 
         // Header
-        JPanel dlgHeader = new JPanel(new BorderLayout());
-        dlgHeader.setBackground(ACCENT);
-        dlgHeader.setBorder(BorderFactory.createEmptyBorder(18, 20, 18, 20));
-        JLabel hLbl = new JLabel(edit ? "✏ Editar Ordem de Serviço" : "➕ Nova Ordem de Serviço");
-        hLbl.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        JPanel header = new JPanel(new BorderLayout());
+        header.setBackground(ACCENT);
+        header.setBorder(BorderFactory.createEmptyBorder(20, 25, 20, 25));
+        JLabel hLbl = new JLabel("➕ Nova Ordem de Serviço");
+        hLbl.setFont(new Font("Segoe UI", Font.BOLD, 18));
         hLbl.setForeground(Color.WHITE);
-        dlgHeader.add(hLbl, BorderLayout.CENTER);
-        osDialog.add(dlgHeader, BorderLayout.NORTH);
+        header.add(hLbl, BorderLayout.CENTER);
+        dlg.add(header, BorderLayout.NORTH);
 
         // Form
         JPanel form = new JPanel(new GridBagLayout());
         form.setBackground(Color.WHITE);
-        form.setBorder(BorderFactory.createEmptyBorder(15, 20, 15, 20));
+        form.setBorder(BorderFactory.createEmptyBorder(20, 25, 20, 25));
 
         GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(5, 0, 5, 0);
+        gbc.insets = new Insets(4, 0, 4, 0);
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.weightx = 1.0;
 
-        String[] labels = {"Cliente:", "Telefone:", "Email:", "Serviço:", "Técnico:", "Equipamento:", "Descrição:", "Status:", "Prioridade:", "Valor (R$):", "Garantia (dias):"};
-        osFields = new JTextField[6];
-        int fi = 0;
-        int row = 0;
+        JTextField fCliente = inputField(), fTelefone = inputField(), fEmail = inputField();
+        JTextField fServico = inputField(), fTecnico = inputField(), fValor = inputField();
+        JComboBox<String> cEquip = new JComboBox<>(EQUIPS);
+        cEquip.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        cEquip.setBackground(Color.WHITE);
+        JComboBox<String> cStatus = new JComboBox<>(new String[]{"ABERTA", "EM ANDAMENTO", "AGUARDANDO PEÇA"});
+        cStatus.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        cStatus.setBackground(Color.WHITE);
+        JComboBox<String> cPrior = new JComboBox<>(PRIORIDADES);
+        cPrior.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        cPrior.setBackground(Color.WHITE);
+        JTextField fGarantia = inputField();
+        fGarantia.setText("90");
+        JTextArea fDesc = new JTextArea(3, 15);
+        fDesc.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        fDesc.setLineWrap(true);
+        fDesc.setBackground(Color.WHITE);
+        fDesc.setBorder(BorderFactory.createLineBorder(BORDER));
 
-        for (int i = 0; i < labels.length; i++) {
-            gbc.gridy = row;
-            JLabel lb = new JLabel(labels[i]);
-            lb.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-            lb.setForeground(TEXT_SECONDARY);
-            form.add(lb, gbc);
-            row++;
-
-            gbc.gridy = row;
-            gbc.insets = new Insets(2, 0, 8, 0);
-
-            if (labels[i].equals("Status:")) {
-                osStatus = new JComboBox<>(STATUS);
-                osStatus.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-                osStatus.setBackground(Color.WHITE);
-                form.add(osStatus, gbc);
-            } else if (labels[i].equals("Prioridade:")) {
-                osPriority = new JComboBox<>(PRIORIDADES);
-                osPriority.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-                osPriority.setBackground(Color.WHITE);
-                form.add(osPriority, gbc);
-            } else if (labels[i].equals("Equipamento:")) {
-                osEquip = new JComboBox<>(EQUIPS);
-                osEquip.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-                osEquip.setBackground(Color.WHITE);
-                form.add(osEquip, gbc);
-            } else if (labels[i].equals("Descrição:")) {
-                osDesc = new JTextArea(3, 15);
-                osDesc.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-                osDesc.setLineWrap(true);
-                osDesc.setBackground(Color.WHITE);
-                osDesc.setBorder(BorderFactory.createCompoundBorder(
-                    BorderFactory.createLineBorder(BORDER), BorderFactory.createEmptyBorder(6, 10, 6, 10)));
-                form.add(new JScrollPane(osDesc), gbc);
-            } else {
-                osFields[fi] = inputField();
-                form.add(osFields[fi], gbc);
-                fi++;
-            }
-            row++;
-            gbc.insets = new Insets(5, 0, 5, 0);
-        }
-
-        if (edit) {
-            osFields[0].setText(v(editRow, 3));
-            osFields[2].setText(v(editRow, 4));
-            osFields[3].setText(v(editRow, 5));
-            osFields[5].setText(v(editRow, 8));
-            for (int i = 0; i < STATUS.length; i++) if (STATUS[i].equals(v(editRow, 6))) osStatus.setSelectedIndex(i);
-            for (int i = 0; i < PRIORIDADES.length; i++) if (PRIORIDADES[i].equals(v(editRow, 7))) osPriority.setSelectedIndex(i);
-        } else {
-            osStatus.setSelectedIndex(0);
-            osPriority.setSelectedIndex(1);
-        }
+        int r = 0;
+        addFormField(form, gbc, r++, "Cliente:", fCliente);
+        addFormField(form, gbc, r++, "Telefone:", fTelefone);
+        addFormField(form, gbc, r++, "Email:", fEmail);
+        addFormField(form, gbc, r++, "Serviço:", fServico);
+        addFormField(form, gbc, r++, "Técnico:", fTecnico);
+        addFormField(form, gbc, r++, "Equipamento:", cEquip);
+        addFormField(form, gbc, r++, "Descrição:", new JScrollPane(fDesc));
+        addFormField(form, gbc, r++, "Status:", cStatus);
+        addFormField(form, gbc, r++, "Prioridade:", cPrior);
+        addFormField(form, gbc, r++, "Valor (R$):", fValor);
+        addFormField(form, gbc, r++, "Garantia (dias):", fGarantia);
 
         // Buttons
-        JPanel btns = new JPanel(new GridLayout(1, 2, 10, 0));
+        JPanel btns = new JPanel(new GridLayout(1, 2, 12, 0));
         btns.setBackground(Color.WHITE);
-        btns.setBorder(BorderFactory.createEmptyBorder(10, 20, 15, 20));
+        btns.setBorder(BorderFactory.createEmptyBorder(10, 25, 20, 25));
 
-        JButton save = new JButton("💾 Salvar");
-        styleBtn(save, ACCENT);
-        save.addActionListener(e -> saveOS());
-        btns.add(save);
+        JButton saveBtn = new JButton("💾 Salvar OS");
+        styleBtn(saveBtn, ACCENT);
+        saveBtn.addActionListener(e -> {
+            String cliente = fCliente.getText().trim();
+            String servico = fServico.getText().trim();
+            String tecnico = fTecnico.getText().trim();
+            if (cliente.isEmpty() || servico.isEmpty() || tecnico.isEmpty()) {
+                JOptionPane.showMessageDialog(dlg, "Preencha: Cliente, Serviço e Técnico", "Erro", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+            String valor = fValor.getText().trim();
+            if (valor.isEmpty()) valor = "0,00";
 
-        JButton cancel = new JButton("❌ Cancelar");
-        styleBtn(cancel, DANGER);
-        cancel.addActionListener(e -> osDialog.dispose());
-        btns.add(cancel);
+            OS os = new OS(
+                cliente, fTelefone.getText().trim(), fEmail.getText().trim(),
+                servico, tecnico, (String)cEquip.getSelectedItem(),
+                fDesc.getText().trim(), (String)cStatus.getSelectedItem(),
+                (String)cPrior.getSelectedItem(), valor, fGarantia.getText().trim() + "d"
+            );
 
-        osDialog.add(new JScrollPane(form), BorderLayout.CENTER);
-        osDialog.add(btns, BorderLayout.SOUTH);
-        osDialog.setVisible(true);
-    }
-
-    private void saveOS() {
-        String cl = osFields[0].getText().trim();
-        String sv = osFields[2].getText().trim();
-        String tc = osFields[3].getText().trim();
-        String vl = osFields[5].getText().trim();
-        if (cl.isEmpty() || sv.isEmpty() || tc.isEmpty()) {
-            JOptionPane.showMessageDialog(osDialog, "Preencha Cliente, Serviço e Técnico.", "Erro", JOptionPane.ERROR_MESSAGE);
-            return;
-        }
-
-        String st = (String) osStatus.getSelectedItem();
-        String pr = (String) osPriority.getSelectedItem();
-        String vlF = vl.isEmpty() ? "0,00" : vl;
-        String now = now();
-
-        if (editing) {
-            osModel.setValueAt(cl, editRow, 3);
-            osModel.setValueAt(sv, editRow, 4);
-            osModel.setValueAt(tc, editRow, 5);
-            osModel.setValueAt(st, editRow, 6);
-            osModel.setValueAt(pr, editRow, 7);
-            osModel.setValueAt(vlF, editRow, 8);
-            if (st.equals("FINALIZADA") && (osModel.getValueAt(editRow, 2) == null || osModel.getValueAt(editRow, 2).toString().isEmpty()))
-                osModel.setValueAt(now, editRow, 2);
-            addLog("OS atualizada: " + osModel.getValueAt(editRow, 0));
-        } else {
-            String num = String.format("OS-%04d", ++osCounter);
-            String dt = st.equals("FINALIZADA") ? now : "";
-            osModel.addRow(new Object[]{num, now, dt, cl, sv, tc, st, pr, vlF, "90d"});
-            addLog("Nova OS: " + num + " - " + cl);
-        }
-        osDialog.dispose();
-        refreshFinance();
-        refreshDashboardStats();
-    }
-
-    // ===== AÇÕES =====
-    private void deleteOS() {
-        int r = osTable.getSelectedRow();
-        if (r == -1) { JOptionPane.showMessageDialog(this, "Selecione uma OS.", "Atenção", JOptionPane.WARNING_MESSAGE); return; }
-        if (JOptionPane.showConfirmDialog(this, "Excluir " + osModel.getValueAt(r, 0) + "?", "Confirmar", JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION) {
-            addLog("OS excluída: " + osModel.getValueAt(r, 0));
-            osModel.removeRow(r);
-            detailsArea.setText("");
+            osList.add(os);
+            refreshOSTable();
             refreshFinance();
-            refreshDashboardStats();
+            addLog("Nova OS: " + os.id + " - " + cliente);
+            dlg.dispose();
+
+            // Tela de sucesso
+            showSuccessDialog("OS Criada com Sucesso!", os.id + "\nCliente: " + cliente + "\nServiço: " + servico);
+        });
+        btns.add(saveBtn);
+
+        JButton cancelBtn = new JButton("❌ Cancelar");
+        styleBtn(cancelBtn, DANGER);
+        cancelBtn.addActionListener(e -> dlg.dispose());
+        btns.add(cancelBtn);
+
+        dlg.add(new JScrollPane(form), BorderLayout.CENTER);
+        dlg.add(btns, BorderLayout.SOUTH);
+        dlg.setVisible(true);
+    }
+
+    // Diálogo de edição de OS
+    private void editSelectedOS() {
+        int row = osTable.getSelectedRow();
+        if (row == -1) { JOptionPane.showMessageDialog(this, "Selecione uma OS para editar.", "Atenção", JOptionPane.WARNING_MESSAGE); return; }
+
+        OS os = getOSByRow(row);
+        if (os == null) return;
+
+        JDialog dlg = new JDialog(this, "✏️ Editar " + os.id, true);
+        dlg.setSize(580, 680);
+        dlg.setLocationRelativeTo(this);
+        dlg.getContentPane().setBackground(Color.WHITE);
+        dlg.setLayout(new BorderLayout());
+
+        JPanel header = new JPanel(new BorderLayout());
+        header.setBackground(WARNING);
+        header.setBorder(BorderFactory.createEmptyBorder(20, 25, 20, 25));
+        JLabel hLbl = new JLabel("✏️ Editar " + os.id);
+        hLbl.setFont(new Font("Segoe UI", Font.BOLD, 18));
+        hLbl.setForeground(Color.WHITE);
+        header.add(hLbl, BorderLayout.CENTER);
+        dlg.add(header, BorderLayout.NORTH);
+
+        JPanel form = new JPanel(new GridBagLayout());
+        form.setBackground(Color.WHITE);
+        form.setBorder(BorderFactory.createEmptyBorder(20, 25, 20, 25));
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(4, 0, 4, 0);
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.weightx = 1.0;
+
+        JTextField fCliente = inputField(os.cliente);
+        JTextField fTelefone = inputField(os.telefone);
+        JTextField fEmail = inputField(os.email);
+        JTextField fServico = inputField(os.servico);
+        JTextField fTecnico = inputField(os.tecnico);
+        JTextField fValor = inputField(os.valor);
+        JComboBox<String> cEquip = new JComboBox<>(EQUIPS);
+        cEquip.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        cEquip.setBackground(Color.WHITE);
+        cEquip.setSelectedItem(os.equipamento);
+        JComboBox<String> cStatus = new JComboBox<>(STATUS);
+        cStatus.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        cStatus.setBackground(Color.WHITE);
+        cStatus.setSelectedItem(os.status);
+        JComboBox<String> cPrior = new JComboBox<>(PRIORIDADES);
+        cPrior.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        cPrior.setBackground(Color.WHITE);
+        cPrior.setSelectedItem(os.prioridade);
+        JTextField fGarantia = inputField(os.garantia.replace("d", ""));
+        JTextArea fDesc = new JTextArea(3, 15);
+        fDesc.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        fDesc.setLineWrap(true);
+        fDesc.setBackground(Color.WHITE);
+        fDesc.setBorder(BorderFactory.createLineBorder(BORDER));
+        fDesc.setText(os.descricao);
+
+        int ri = 0;
+        addFormField(form, gbc, ri++, "Cliente:", fCliente);
+        addFormField(form, gbc, ri++, "Telefone:", fTelefone);
+        addFormField(form, gbc, ri++, "Email:", fEmail);
+        addFormField(form, gbc, ri++, "Serviço:", fServico);
+        addFormField(form, gbc, ri++, "Técnico:", fTecnico);
+        addFormField(form, gbc, ri++, "Equipamento:", cEquip);
+        addFormField(form, gbc, ri++, "Descrição:", new JScrollPane(fDesc));
+        addFormField(form, gbc, ri++, "Status:", cStatus);
+        addFormField(form, gbc, ri++, "Prioridade:", cPrior);
+        addFormField(form, gbc, ri++, "Valor (R$):", fValor);
+        addFormField(form, gbc, ri++, "Garantia (dias):", fGarantia);
+
+        JPanel btns = new JPanel(new GridLayout(1, 2, 12, 0));
+        btns.setBackground(Color.WHITE);
+        btns.setBorder(BorderFactory.createEmptyBorder(10, 25, 20, 25));
+
+        JButton saveBtn = new JButton("💾 Salvar");
+        styleBtn(saveBtn, WARNING);
+        saveBtn.addActionListener(e -> {
+            os.cliente = fCliente.getText().trim();
+            os.telefone = fTelefone.getText().trim();
+            os.email = fEmail.getText().trim();
+            os.servico = fServico.getText().trim();
+            os.tecnico = fTecnico.getText().trim();
+            os.equipamento = (String)cEquip.getSelectedItem();
+            os.descricao = fDesc.getText().trim();
+            os.status = (String)cStatus.getSelectedItem();
+            os.prioridade = (String)cPrior.getSelectedItem();
+            os.valor = fValor.getText().trim();
+            os.garantia = fGarantia.getText().trim() + "d";
+
+            refreshOSTable();
+            refreshFinance();
+            addLog("OS editada: " + os.id);
+            dlg.dispose();
+            showSuccessDialog("OS Atualizada!", os.id + " atualizada com sucesso.");
+        });
+        btns.add(saveBtn);
+
+        JButton cancelBtn = new JButton("Cancelar");
+        styleBtn(cancelBtn, DANGER);
+        cancelBtn.addActionListener(e -> dlg.dispose());
+        btns.add(cancelBtn);
+
+        dlg.add(new JScrollPane(form), BorderLayout.CENTER);
+        dlg.add(btns, BorderLayout.SOUTH);
+        dlg.setVisible(true);
+    }
+
+    // Finalizar OS
+    private void finalizeSelectedOS() {
+        int row = osTable.getSelectedRow();
+        if (row == -1) { JOptionPane.showMessageDialog(this, "Selecione uma OS para finalizar.", "Atenção", JOptionPane.WARNING_MESSAGE); return; }
+
+        OS os = getOSByRow(row);
+        if (os == null) return;
+
+        int r = JOptionPane.showConfirmDialog(this, "Finalizar OS " + os.id + "?", "Confirmar", JOptionPane.YES_NO_OPTION);
+        if (r == JOptionPane.YES_OPTION) {
+            os.status = "FINALIZADA";
+            os.dataConclusao = new SimpleDateFormat("dd/MM/yyyy HH:mm").format(new Date());
+            refreshOSTable();
+            refreshFinance();
+            addLog("OS finalizada: " + os.id);
+            showSuccessDialog("OS Finalizada!", os.id + " foi marcada como FINALIZADA.");
         }
+    }
+
+    // Deletar OS
+    private void deleteSelectedOS() {
+        int row = osTable.getSelectedRow();
+        if (row == -1) { JOptionPane.showMessageDialog(this, "Selecione uma OS para excluir.", "Atenção", JOptionPane.WARNING_MESSAGE); return; }
+
+        OS os = getOSByRow(row);
+        if (os == null) return;
+
+        int r = JOptionPane.showConfirmDialog(this, "Excluir OS " + os.id + "?", "Confirmar", JOptionPane.YES_NO_OPTION);
+        if (r == JOptionPane.YES_OPTION) {
+            osList.remove(os);
+            refreshOSTable();
+            refreshFinance();
+            detailsArea.setText("");
+            addLog("OS excluída: " + os.id);
+        }
+    }
+
+    // Imprimir OS
+    private void printSelectedOS() {
+        int row = osTable.getSelectedRow();
+        if (row == -1) { JOptionPane.showMessageDialog(this, "Selecione uma OS.", "Atenção", JOptionPane.WARNING_MESSAGE); return; }
+        OS os = getOSByRow(row);
+        if (os == null) return;
+
+        String out = String.format(
+            "┌──────────────────────────────────────┐\n" +
+            "│   ORDEM DE SERVIÇO - TechSuite Pro   │\n" +
+            "├──────────────────────────────────────┤\n" +
+            "│  OS: %-33s│\n" +
+            "│  Abertura: %-27s│\n" +
+            "│  Conclusão: %-26s│\n" +
+            "│  Cliente: %-28s│\n" +
+            "│  Telefone: %-25s│\n" +
+            "│  Email: %-30s│\n" +
+            "│  Serviço: %-28s│\n" +
+            "│  Técnico: %-28s│\n" +
+            "│  Equipamento: %-22s│\n" +
+            "│  Status: %-29s│\n" +
+            "│  Prioridade: %-24s│\n" +
+            "│  Valor: R$ %-26s│\n" +
+            "│  Garantia: %-25s│\n" +
+            "│  Descrição: %-24s│\n" +
+            "└──────────────────────────────────────┘",
+            os.id, os.dataAbertura, os.dataConclusao, os.cliente, os.telefone,
+            os.email, os.servico, os.tecnico, os.equipamento, os.status,
+            os.prioridade, os.valor, os.garantia, os.descricao.length() > 24 ? os.descricao.substring(0,24) : os.descricao
+        );
+        JOptionPane.showMessageDialog(this, out, "OS " + os.id, JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    // ===== HELPERS DE OS =====
+    private OS getOSByRow(int row) {
+        int idx = osTable.convertRowIndexToModel(row);
+        if (idx >= 0 && idx < osList.size()) return osList.get(idx);
+        return null;
+    }
+
+    private void refreshOSTable() {
+        osModel.setRowCount(0);
+        for (OS os : osList) osModel.addRow(os.toRow());
     }
 
     private void filterOS() {
@@ -832,64 +919,100 @@ public class HackPanel extends JFrame {
         String st = (String) filterStatus.getSelectedItem();
         String pr = (String) filterPriority.getSelectedItem();
         osModel.setRowCount(0);
-        for (Object[] row : sampleOS) {
-            boolean mS = s.isEmpty(), mSt = st.equals("TODOS"), mPr = pr.equals("TODAS");
-            if (!mS) for (Object c : row) if (c.toString().toLowerCase().contains(s)) { mS = true; break; }
-            if (!mSt) mSt = row[6].equals(st);
-            if (!mPr) mPr = row[7].equals(pr);
-            if (mS && mSt && mPr) osModel.addRow(row);
+        for (OS os : osList) {
+            boolean mS = s.isEmpty();
+            if (!mS) {
+                String all = os.id + os.cliente + os.servico + os.tecnico + os.status;
+                mS = all.toLowerCase().contains(s);
+            }
+            boolean mSt = st.equals("TODOS") || os.status.equals(st);
+            boolean mPr = pr.equals("TODAS") || os.prioridade.equals(pr);
+            if (mS && mSt && mPr) osModel.addRow(os.toRow());
         }
-        refreshFinance();
-        refreshDashboardStats();
     }
 
-    private void showDetails(int r) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("═══════════════════════════════════════\n");
-        sb.append("  ORDEM DE SERVIÇO\n");
-        sb.append("═══════════════════════════════════════\n\n");
-        for (int i = 0; i < OS_COLS.length; i++)
-            sb.append(String.format("  %-16s : %s\n", OS_COLS[i], osModel.getValueAt(r, i)));
-        detailsArea.setText(sb.toString());
+    private void showDetails(int row) {
+        int idx = osTable.convertRowIndexToModel(row);
+        if (idx < 0 || idx >= osList.size()) return;
+        OS os = osList.get(idx);
+        String out = String.format(
+            "══════════════════════════════════════════\n" +
+            "  ORDEM DE SERVIÇO: %s\n" +
+            "══════════════════════════════════════════\n\n" +
+            "  Abertura   : %s\n" +
+            "  Conclusão  : %s\n" +
+            "  Cliente    : %s\n" +
+            "  Telefone   : %s\n" +
+            "  Email      : %s\n" +
+            "  Serviço    : %s\n" +
+            "  Técnico    : %s\n" +
+            "  Equipamento: %s\n" +
+            "  Status     : %s\n" +
+            "  Prioridade : %s\n" +
+            "  Valor      : R$ %s\n" +
+            "  Garantia   : %s\n" +
+            "  Descrição  : %s\n" +
+            "\n══════════════════════════════════════════\n",
+            os.id, os.dataAbertura, os.dataConclusao, os.cliente, os.telefone,
+            os.email, os.servico, os.tecnico, os.equipamento, os.status,
+            os.prioridade, os.valor, os.garantia, os.descricao
+        );
+        detailsArea.setText(out);
     }
 
-    private void printOS() {
-        int r = osTable.getSelectedRow();
-        if (r == -1) { JOptionPane.showMessageDialog(this, "Selecione uma OS.", "Atenção", JOptionPane.WARNING_MESSAGE); return; }
-        StringBuilder sb = new StringBuilder();
-        sb.append("┌──────────────────────────────────────┐\n");
-        sb.append("│   ORDEM DE SERVIÇO - TechSuite Pro   │\n");
-        sb.append("├──────────────────────────────────────┤\n");
-        for (int i = 0; i < OS_COLS.length; i++)
-            sb.append(String.format("│ %-10s : %-25s│\n", OS_COLS[i], osModel.getValueAt(r, i)));
-        sb.append("└──────────────────────────────────────┘\n");
-        JOptionPane.showMessageDialog(this, sb.toString(), "OS " + osModel.getValueAt(r, 0), JOptionPane.INFORMATION_MESSAGE);
+    private int countOS(String status) {
+        int c = 0;
+        for (OS os : osList) if (os.status.equals(status)) c++;
+        return c;
     }
 
-    private void exportOS() { exportData(osModel, OS_COLS, "ordens_servico.csv"); }
-    private void exportClients() { exportData(clientModel, CLIENT_COLS, "clientes.csv"); }
-    private void exportTechs() { exportData(techModel, TECH_COLS, "equipe.csv"); }
-    private void exportFinance() { exportData(finModel, FIN_COLS, "financeiro.csv"); }
+    private String totalFaturamento() {
+        double t = 0;
+        for (OS os : osList) t += parseValor(os.valor);
+        return "R$ " + String.format("%.2f", t);
+    }
+
+    private String totalPendente() {
+        double t = 0;
+        for (OS os : osList) if (!os.status.equals("FINALIZADA")) t += parseValor(os.valor);
+        return "R$ " + String.format("%.2f", t);
+    }
+
+    private String totalRecebido() {
+        double t = 0;
+        for (OS os : osList) if (os.status.equals("FINALIZADA")) t += parseValor(os.valor);
+        return "R$ " + String.format("%.2f", t);
+    }
+
+    private String ticketMedio() {
+        if (osList.isEmpty()) return "R$ 0,00";
+        double t = 0;
+        for (OS os : osList) t += parseValor(os.valor);
+        return "R$ " + String.format("%.2f", t / osList.size());
+    }
+
+    private double parseValor(String v) {
+        try { return Double.parseDouble(v.replace(",", ".")); } catch (Exception e) { return 0; }
+    }
 
     // ===== CLIENTES =====
     private void addClient() {
-        JTextField n = inputField(), t = inputField(), e = inputField(), en = inputField();
-        JPanel p = formPanel(new Object[]{lbl("Nome:"), n, lbl("Telefone:"), t, lbl("Email:"), e, lbl("Endereço:"), en}, 4);
+        JTextField n = inputField(), t = inputField(), e = inputField();
+        JPanel p = formPanel(new Object[]{lbl("Nome:"), n, lbl("Telefone:"), t, lbl("Email:"), e}, 3);
         if (JOptionPane.showConfirmDialog(this, p, "Novo Cliente", JOptionPane.OK_CANCEL_OPTION) == JOptionPane.OK_OPTION) {
-            clientModel.addRow(new Object[]{String.format("CL-%03d", clientModel.getRowCount()+1), n.getText(), t.getText(), e.getText(), en.getText(), dateOnly()});
+            String id = String.format("CL-%03d", clientModel.getRowCount()+1);
+            String data = dateOnly();
+            clientModel.addRow(new Object[]{id, n.getText(), t.getText(), e.getText(), data});
             addLog("Cliente: " + n.getText());
-            refreshDashboardStats();
         }
     }
-
-    private void editClient() { JOptionPane.showMessageDialog(this, "Selecione e edite o cliente.", "Editar", JOptionPane.INFORMATION_MESSAGE); }
 
     private void deleteClient() {
         int r = clientTable.getSelectedRow();
         if (r == -1) { JOptionPane.showMessageDialog(this, "Selecione um cliente.", "Atenção", JOptionPane.WARNING_MESSAGE); return; }
-        if (JOptionPane.showConfirmDialog(this, "Excluir?", "Confirmar", JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION) {
+        if (JOptionPane.showConfirmDialog(this, "Excluir cliente?", "Confirmar", JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION) {
             addLog("Cliente excluído: " + clientModel.getValueAt(r, 1));
-            clientModel.removeRow(r);
+            ((DefaultTableModel)clientTable.getModel()).removeRow(r);
         }
     }
 
@@ -898,182 +1021,81 @@ public class HackPanel extends JFrame {
         JTextField n = inputField(), e = inputField();
         JPanel p = formPanel(new Object[]{lbl("Nome:"), n, lbl("Especialidade:"), e}, 2);
         if (JOptionPane.showConfirmDialog(this, p, "Novo Técnico", JOptionPane.OK_CANCEL_OPTION) == JOptionPane.OK_OPTION) {
-            techModel.addRow(new Object[]{String.format("TEC-%03d", techModel.getRowCount()+1), n.getText(), e.getText(), 0, 0, "SIM"});
+            String id = String.format("TEC-%03d", techModel.getRowCount()+1);
+            techModel.addRow(new Object[]{id, n.getText(), e.getText(), 0, 0});
             addLog("Técnico: " + n.getText());
         }
     }
 
-    private void editTech() { JOptionPane.showMessageDialog(this, "Edite o técnico.", "Editar", JOptionPane.INFORMATION_MESSAGE); }
-
     private void deleteTech() {
         int r = techTable.getSelectedRow();
         if (r == -1) { JOptionPane.showMessageDialog(this, "Selecione um técnico.", "Atenção", JOptionPane.WARNING_MESSAGE); return; }
-        if (JOptionPane.showConfirmDialog(this, "Excluir?", "Confirmar", JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION) {
+        if (JOptionPane.showConfirmDialog(this, "Excluir técnico?", "Confirmar", JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION) {
             addLog("Técnico excluído");
-            techModel.removeRow(r);
+            ((DefaultTableModel)techTable.getModel()).removeRow(r);
         }
     }
-
-    private void showSchedule() { JOptionPane.showMessageDialog(this, "📅 Agenda - Em desenvolvimento.", "Agenda", JOptionPane.INFORMATION_MESSAGE); }
 
     // ===== FINANCEIRO =====
     private void refreshFinance() {
+        if (finModel == null) return;
         finModel.setRowCount(0);
-        for (int i = 0; i < osModel.getRowCount(); i++) {
-            String st = (String) osModel.getValueAt(i, 6);
-            String pg = st.equals("FINALIZADA") ? "PAGO" : st.equals("CANCELADA") ? "CANCELADO" : "PENDENTE";
-            finModel.addRow(new Object[]{osModel.getValueAt(i, 0), osModel.getValueAt(i, 3), osModel.getValueAt(i, 4),
-                "R$ " + osModel.getValueAt(i, 8), pg, osModel.getValueAt(i, 2)});
+        for (OS os : osList) {
+            String pg = os.status.equals("FINALIZADA") ? "PAGO" : "PENDENTE";
+            finModel.addRow(new Object[]{os.id, os.cliente, os.servico, "R$ " + os.valor, pg, os.dataConclusao});
         }
     }
 
-    private void printFinance() {
-        double total = 0, pago = 0, pendente = 0;
-        for (int i = 0; i < finModel.getRowCount(); i++) {
-            String val = finModel.getValueAt(i, 3).toString().replace("R$ ", "").replace(",", ".");
-            double v = Double.parseDouble(val);
-            total += v;
-            if (finModel.getValueAt(i, 4).equals("PAGO")) pago += v; else if (finModel.getValueAt(i, 4).equals("PENDENTE")) pendente += v;
-        }
-        String r = String.format("RELATÓRIO FINANCEIRO\n\nTotal: R$ %.2f\nRecebido: R$ %.2f\nPendente: R$ %.2f\nTicket Médio: R$ %.2f\nOS: %d",
-                total, pago, pendente, finModel.getRowCount() > 0 ? total / finModel.getRowCount() : 0, finModel.getRowCount());
-        JOptionPane.showMessageDialog(this, r, "Financeiro", JOptionPane.INFORMATION_MESSAGE);
-    }
-
-    // ===== RELATÓRIO COMPLETO =====
-    private void printFullReport() {
+    // ===== RELATÓRIOS =====
+    private void showFullReport() {
         StringBuilder sb = new StringBuilder();
-        sb.append("╔═══════════════════════════════════════════╗\n");
-        sb.append("║   RELATÓRIO COMPLETO - TechSuite Pro      ║\n");
-        sb.append("╠═══════════════════════════════════════════╣\n");
+        sb.append("╔══════════════════════════════════════╗\n");
+        sb.append("║   RELATÓRIO COMPLETO - TechSuite     ║\n");
+        sb.append("╠══════════════════════════════════════╣\n");
+        sb.append(String.format("║ Total OS : %26d ║\n", osList.size()));
+        sb.append(String.format("║ Abertas  : %26d ║\n", countOS("ABERTA")));
+        sb.append(String.format("║ Andamento: %26d ║\n", countOS("EM ANDAMENTO")));
+        sb.append(String.format("║ Finaliz. : %26d ║\n", countOS("FINALIZADA")));
+        sb.append(String.format("║ Receita  : %-19s ║\n", totalFaturamento()));
+        sb.append(String.format("║ Clientes : %26d ║\n", clientModel.getRowCount()));
+        sb.append(String.format("║ Técnicos : %26d ║\n", techModel.getRowCount()));
+        sb.append("╚══════════════════════════════════════╝\n");
+        showInfoDialog("Relatório Completo", sb.toString());
+    }
 
-        int ab = 0, and = 0, fin = 0, can = 0;
-        double total = 0, recebido = 0;
-        for (int i = 0; i < osModel.getRowCount(); i++) {
-            String st = (String) osModel.getValueAt(i, 6);
-            double v = Double.parseDouble(osModel.getValueAt(i, 8).toString().replace(",", "."));
-            total += v;
-            if (st.equals("ABERTA")) ab++;
-            else if (st.equals("EM ANDAMENTO")) and++;
-            else if (st.equals("FINALIZADA")) { fin++; recebido += v; }
-            else if (st.equals("CANCELADA")) can++;
+    private void showClientReport() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("══════════════════════════════════════\n");
+        sb.append("  RELATÓRIO DE CLIENTES\n");
+        sb.append("══════════════════════════════════════\n\n");
+        DefaultTableModel m = (DefaultTableModel)clientTable.getModel();
+        for (int i = 0; i < m.getRowCount(); i++) {
+            sb.append(String.format("  %s - %s | %s\n", m.getValueAt(i,0), m.getValueAt(i,1), m.getValueAt(i,2)));
         }
-
-        sb.append(String.format("║ Total OS: %d | Abertas: %d | Andamento: %d  ║\n", osModel.getRowCount(), ab, and));
-        sb.append(String.format("║ Finalizadas: %d | Canceladas: %d            ║\n", fin, can));
-        sb.append(String.format("║ Receita: R$ %.2f | Recebido: R$ %.2f         ║\n", total, recebido));
-        sb.append(String.format("║ Clientes: %d | Técnicos: %d                 ║\n", clientModel.getRowCount(), techModel.getRowCount()));
-        sb.append("╚═══════════════════════════════════════════╝\n");
-
-        JOptionPane.showMessageDialog(this, sb.toString(), "Relatório", JOptionPane.INFORMATION_MESSAGE);
+        showInfoDialog("Clientes", sb.toString());
     }
 
-    // ===== ADMIN =====
-    private void loadUsers() {
-        if (userModel == null) return;
-        userModel.setRowCount(0);
-        File uf = new File(System.getProperty("user.home") + "/.techsuite/users.dat");
-        if (!uf.exists()) return;
-        try (BufferedReader br = new BufferedReader(new FileReader(uf))) {
-            String line;
-            while ((line = br.readLine()) != null) {
-                String[] p = line.split("\\|");
-                if (p.length >= 7) userModel.addRow(p);
-            }
-        } catch (Exception ignored) {}
-    }
-
-    private void addUserDialog() {
-        JDialog dlg = new JDialog(this, "Novo Usuário", true);
-        dlg.setSize(420, 380);
-        dlg.setLocationRelativeTo(this);
-        dlg.getContentPane().setBackground(Color.WHITE);
-        dlg.setLayout(new BorderLayout(10, 10));
-
-        JPanel form = new JPanel(new GridBagLayout());
-        form.setBackground(Color.WHITE);
-        form.setBorder(BorderFactory.createEmptyBorder(15, 20, 15, 20));
-
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.insets = new Insets(5, 0, 5, 0);
-        gbc.weightx = 1.0;
-
-        JTextField uId = inputField(), uName = inputField(), uEmail = inputField();
-        JPasswordField uPass = new JPasswordField();
-        uPass.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        uPass.setBackground(Color.WHITE);
-        uPass.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(BORDER), BorderFactory.createEmptyBorder(8, 10, 8, 10)));
-        JComboBox<String> uRole = new JComboBox<>(new String[]{"USER", "ADMIN"});
-        uRole.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        uRole.setBackground(Color.WHITE);
-
-        int r = 0;
-        gbc.gridy = r; form.add(lbl("Usuário:"), gbc); r++; gbc.gridy = r; form.add(uId, gbc); r++;
-        gbc.gridy = r; form.add(lbl("Senha:"), gbc); r++; gbc.gridy = r; form.add(uPass, gbc); r++;
-        gbc.gridy = r; form.add(lbl("Nome:"), gbc); r++; gbc.gridy = r; form.add(uName, gbc); r++;
-        gbc.gridy = r; form.add(lbl("Email:"), gbc); r++; gbc.gridy = r; form.add(uEmail, gbc); r++;
-        gbc.gridy = r; form.add(lbl("Nível:"), gbc); r++; gbc.gridy = r; form.add(uRole, gbc); r++;
-
-        JPanel btns = new JPanel(new GridLayout(1, 2, 10, 0));
-        btns.setBackground(Color.WHITE);
-
-        JButton save = new JButton("💾 Cadastrar");
-        styleBtn(save, ACCENT);
-        save.addActionListener(e -> {
-            String uid = uId.getText().trim(), pass = new String(uPass.getPassword());
-            String name = uName.getText().trim(), email = uEmail.getText().trim();
-            String role = (String) uRole.getSelectedItem();
-            if (uid.isEmpty() || pass.isEmpty() || name.isEmpty()) {
-                JOptionPane.showMessageDialog(dlg, "Preencha os campos.", "Erro", JOptionPane.ERROR_MESSAGE);
-                return;
-            }
-            try (FileWriter fw = new FileWriter(System.getProperty("user.home") + "/.techsuite/users.dat", true)) {
-                fw.write(String.format("%d|%s|%s|%s|%s|%s|ATIVO|%s\n",
-                    userModel.getRowCount()+1, uid, name, hashStr(pass), email, role, now()));
-                addLog("Usuário criado: " + uid);
-                loadUsers();
-                dlg.dispose();
-            } catch (Exception ex) {
-                JOptionPane.showMessageDialog(dlg, "Erro: " + ex.getMessage(), "Erro", JOptionPane.ERROR_MESSAGE);
-            }
-        });
-        btns.add(save);
-
-        JButton cancel = new JButton("Cancelar");
-        styleBtn(cancel, DANGER);
-        cancel.addActionListener(e -> dlg.dispose());
-        btns.add(cancel);
-
-        dlg.add(new JScrollPane(form), BorderLayout.CENTER);
-        dlg.add(btns, BorderLayout.SOUTH);
-        dlg.setVisible(true);
-    }
-
-    private void toggleUserStatus(boolean enable) {
-        int r = userTable.getSelectedRow();
-        if (r == -1) { JOptionPane.showMessageDialog(this, "Selecione um usuário.", "Atenção", JOptionPane.WARNING_MESSAGE); return; }
-        userModel.setValueAt(enable ? "ATIVO" : "BLOQUEADO", r, 5);
-        addLog("Usuário " + (enable ? "ativado" : "bloqueado"));
-    }
-
-    private void deleteUser() {
-        int r = userTable.getSelectedRow();
-        if (r == -1) { JOptionPane.showMessageDialog(this, "Selecione um usuário.", "Atenção", JOptionPane.WARNING_MESSAGE); return; }
-        if (JOptionPane.showConfirmDialog(this, "Excluir usuário?", "Confirmar", JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION) {
-            addLog("Usuário excluído: " + userModel.getValueAt(r, 1));
-            userModel.removeRow(r);
+    private void showTechReport() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("══════════════════════════════════════\n");
+        sb.append("  RELATÓRIO DA EQUIPE\n");
+        sb.append("══════════════════════════════════════\n\n");
+        DefaultTableModel m = (DefaultTableModel)techTable.getModel();
+        for (int i = 0; i < m.getRowCount(); i++) {
+            sb.append(String.format("  %s - %s | %s\n", m.getValueAt(i,0), m.getValueAt(i,1), m.getValueAt(i,2)));
         }
+        showInfoDialog("Equipe", sb.toString());
     }
 
-    // ===== FERRAMENTAS =====
-    private void showSystemInfo() {
-        String info = String.format("Sistema: %s %s\nJava: %s\nUsuário: %s\nMemória: %d MB / %d MB\nProcessadores: %d",
-            System.getProperty("os.name"), System.getProperty("os.version"),
-            System.getProperty("java.version"), System.getProperty("user.name"),
-            Runtime.getRuntime().freeMemory()/1024/1024, Runtime.getRuntime().totalMemory()/1024/1024,
-            Runtime.getRuntime().availableProcessors());
-        JOptionPane.showMessageDialog(this, info, "Info do Sistema", JOptionPane.INFORMATION_MESSAGE);
+    private void showFinanceReport() {
+        String out = String.format("RELATÓRIO FINANCEIRO\n\n" +
+            "Receita Total : %s\n" +
+            "A Receber     : %s\n" +
+            "Recebido      : %s\n" +
+            "Ticket Médio  : %s\n" +
+            "Total OS      : %d",
+            totalFaturamento(), totalPendente(), totalRecebido(), ticketMedio(), osList.size());
+        showInfoDialog("Financeiro", out);
     }
 
     private void doBackup() {
@@ -1083,40 +1105,163 @@ public class HackPanel extends JFrame {
             try {
                 String dest = fc.getSelectedFile().getPath() + "/backup_" + new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date()) + ".txt";
                 FileWriter fw = new FileWriter(dest);
-                fw.write("BACKUP - " + now() + "\n\n");
-                fw.write("=== ORDENS ===\n");
-                for (int i = 0; i < osModel.getRowCount(); i++) {
-                    for (int j = 0; j < osModel.getColumnCount(); j++) fw.write(osModel.getValueAt(i, j) + (j < osModel.getColumnCount()-1 ? "|" : ""));
-                    fw.write("\n");
-                }
-                fw.write("\n=== CLIENTES ===\n");
-                for (int i = 0; i < clientModel.getRowCount(); i++) {
-                    for (int j = 0; j < clientModel.getColumnCount(); j++) fw.write(clientModel.getValueAt(i, j) + (j < clientModel.getColumnCount()-1 ? "|" : ""));
-                    fw.write("\n");
+                fw.write("BACKUP TECHSUITE - " + now() + "\n\n");
+                for (OS os : osList) {
+                    fw.write(String.join("|", os.id, os.cliente, os.servico, os.status, os.valor) + "\n");
                 }
                 fw.close();
                 addLog("Backup: " + dest);
-                JOptionPane.showMessageDialog(this, "Backup realizado!", "Sucesso", JOptionPane.INFORMATION_MESSAGE);
+                showSuccessDialog("Backup Realizado!", "Arquivo: " + dest);
             } catch (Exception ex) { JOptionPane.showMessageDialog(this, "Erro: " + ex.getMessage(), "Erro", JOptionPane.ERROR_MESSAGE); }
         }
     }
 
-    // ===== HELPERS UI =====
+    private void showSystemInfo() {
+        String info = String.format(
+            "Sistema: %s %s\nJava: %s\nUsuário: %s\nMemória: %d MB livre\nProcessadores: %d",
+            System.getProperty("os.name"), System.getProperty("os.version"),
+            System.getProperty("java.version"), System.getProperty("user.name"),
+            Runtime.getRuntime().freeMemory()/1024/1024, Runtime.getRuntime().availableProcessors());
+        showInfoDialog("Info do Sistema", info);
+    }
+
+    // ===== ADMIN =====
+    private void loadUsers() {
+        if (userModel == null) return;
+        userModel.setRowCount(0);
+        userModel.addRow(new Object[]{"admin", "Administrador", "ADMIN", "ATIVO"});
+        File uf = new File(System.getProperty("user.home") + "/.techsuite/users.dat");
+        if (!uf.exists()) return;
+        try (BufferedReader br = new BufferedReader(new FileReader(uf))) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                String[] p = line.split("\\|");
+                if (p.length >= 4) userModel.addRow(new Object[]{p[0], p[1], p[2], p[3]});
+            }
+        } catch (Exception ignored) {}
+    }
+
+    private void addUserDialog() {
+        JTextField uId = inputField(), uName = inputField();
+        JPasswordField uPass = new JPasswordField();
+        uPass.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        uPass.setBackground(Color.WHITE);
+        uPass.setBorder(BorderFactory.createLineBorder(BORDER));
+        JComboBox<String> uRole = new JComboBox<>(new String[]{"USER", "ADMIN"});
+        uRole.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        uRole.setBackground(Color.WHITE);
+
+        JPanel p = formPanel(new Object[]{lbl("Usuário:"), uId, lbl("Senha:"), uPass, lbl("Nome:"), uName, lbl("Nível:"), uRole}, 4);
+        if (JOptionPane.showConfirmDialog(this, p, "Novo Usuário", JOptionPane.OK_CANCEL_OPTION) == JOptionPane.OK_OPTION) {
+            try (FileWriter fw = new FileWriter(System.getProperty("user.home") + "/.techsuite/users.dat", true)) {
+                fw.write(String.format("%s|%s|%s|ATIVO\n", uId.getText().trim(), uName.getText().trim(), uRole.getSelectedItem()));
+                addLog("Usuário criado: " + uId.getText());
+                loadUsers();
+            } catch (Exception ex) { JOptionPane.showMessageDialog(this, "Erro: " + ex.getMessage(), "Erro", JOptionPane.ERROR_MESSAGE); }
+        }
+    }
+
+    // ===== DIALOGOS MODERNOS =====
+    private void showSuccessDialog(String title, String message) {
+        JDialog dlg = new JDialog(this, title, true);
+        dlg.setSize(400, 250);
+        dlg.setLocationRelativeTo(this);
+        dlg.setUndecorated(true);
+        dlg.getContentPane().setBackground(Color.WHITE);
+        dlg.setLayout(new BorderLayout());
+
+        // Header
+        JPanel header = new JPanel(new BorderLayout());
+        header.setBackground(SUCCESS);
+        header.setBorder(BorderFactory.createEmptyBorder(25, 25, 25, 25));
+
+        JLabel icon = new JLabel("✅", SwingConstants.CENTER);
+        icon.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 48));
+        icon.setForeground(Color.WHITE);
+        header.add(icon, BorderLayout.CENTER);
+
+        JLabel t = new JLabel(title);
+        t.setFont(new Font("Segoe UI", Font.BOLD, 18));
+        t.setForeground(Color.WHITE);
+        t.setHorizontalAlignment(SwingConstants.CENTER);
+        header.add(t, BorderLayout.SOUTH);
+        dlg.add(header, BorderLayout.NORTH);
+
+        // Message
+        JTextArea msg = new JTextArea(message);
+        msg.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        msg.setForeground(TEXT_SECONDARY);
+        msg.setBackground(Color.WHITE);
+        msg.setEditable(false);
+        msg.setBorder(BorderFactory.createEmptyBorder(20, 25, 20, 25));
+        msg.setLineWrap(true);
+        dlg.add(msg, BorderLayout.CENTER);
+
+        // Button
+        JPanel btns = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 15));
+        btns.setBackground(Color.WHITE);
+        JButton ok = new JButton("OK");
+        styleBtn(ok, SUCCESS);
+        ok.setPreferredSize(new Dimension(120, 38));
+        ok.addActionListener(e -> dlg.dispose());
+        btns.add(ok);
+        dlg.add(btns, BorderLayout.SOUTH);
+
+        dlg.setVisible(true);
+    }
+
+    private void showInfoDialog(String title, String message) {
+        JDialog dlg = new JDialog(this, title, true);
+        dlg.setSize(500, 380);
+        dlg.setLocationRelativeTo(this);
+        dlg.getContentPane().setBackground(Color.WHITE);
+        dlg.setLayout(new BorderLayout());
+
+        JPanel header = new JPanel(new BorderLayout());
+        header.setBackground(INFO);
+        header.setBorder(BorderFactory.createEmptyBorder(18, 25, 18, 25));
+        JLabel t = new JLabel("  " + title);
+        t.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        t.setForeground(Color.WHITE);
+        header.add(t, BorderLayout.CENTER);
+        dlg.add(header, BorderLayout.NORTH);
+
+        JTextArea msg = new JTextArea(message);
+        msg.setFont(new Font("Consolas", Font.PLAIN, 12));
+        msg.setForeground(TEXT_PRIMARY);
+        msg.setBackground(Color.WHITE);
+        msg.setEditable(false);
+        msg.setBorder(BorderFactory.createEmptyBorder(15, 20, 15, 20));
+        msg.setLineWrap(true);
+        dlg.add(new JScrollPane(msg), BorderLayout.CENTER);
+
+        JPanel btns = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 15));
+        btns.setBackground(Color.WHITE);
+        JButton close = new JButton("Fechar");
+        styleBtn(close, INFO);
+        close.addActionListener(e -> dlg.dispose());
+        btns.add(close);
+        dlg.add(btns, BorderLayout.SOUTH);
+
+        dlg.setVisible(true);
+    }
+
+    // ===== UI HELPERS =====
     private JTable createTable(DefaultTableModel m) {
         JTable t = new JTable(m);
         t.setFont(new Font("Segoe UI", Font.PLAIN, 11));
         t.setForeground(TEXT_PRIMARY);
         t.setBackground(Color.WHITE);
-        t.setRowHeight(30);
-        t.setGridColor(new Color(230, 230, 235));
-        t.setSelectionBackground(new Color(79, 70, 229, 30));
+        t.setRowHeight(32);
+        t.setGridColor(new Color(235, 235, 240));
+        t.setSelectionBackground(new Color(79, 70, 229, 25));
         t.setSelectionForeground(TEXT_PRIMARY);
         t.setShowGrid(false);
         t.setIntercellSpacing(new Dimension(0, 1));
         t.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 11));
-        t.getTableHeader().setBackground(new Color(245, 245, 250));
+        t.getTableHeader().setBackground(new Color(248, 248, 252));
         t.getTableHeader().setForeground(TEXT_SECONDARY);
-        t.getTableHeader().setPreferredSize(new Dimension(0, 35));
+        t.getTableHeader().setPreferredSize(new Dimension(0, 36));
         return t;
     }
 
@@ -1131,8 +1276,13 @@ public class HackPanel extends JFrame {
         f.setBackground(Color.WHITE);
         f.setForeground(TEXT_PRIMARY);
         f.setCaretColor(TEXT_PRIMARY);
-        f.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(BORDER), BorderFactory.createEmptyBorder(8, 10, 8, 10)));
+        f.setBorder(BorderFactory.createLineBorder(BORDER));
+        return f;
+    }
+
+    private JTextField inputField(String value) {
+        JTextField f = inputField();
+        f.setText(value != null ? value : "");
         return f;
     }
 
@@ -1157,7 +1307,7 @@ public class HackPanel extends JFrame {
         b.setFocusPainted(false);
         b.setBorderPainted(false);
         b.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        b.setPreferredSize(new Dimension(130, 32));
+        b.setPreferredSize(new Dimension(140, 34));
         b.addActionListener(al);
         b.addMouseListener(new MouseAdapter() {
             public void mouseEntered(MouseEvent e) { b.setBackground(bg.brighter()); }
@@ -1180,6 +1330,19 @@ public class HackPanel extends JFrame {
         });
     }
 
+    private void addFormField(JPanel form, GridBagConstraints gbc, int row, String label, Component field) {
+        gbc.gridy = row * 2;
+        JLabel lb = new JLabel(label);
+        lb.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        lb.setForeground(TEXT_SECONDARY);
+        form.add(lb, gbc);
+
+        gbc.gridy = row * 2 + 1;
+        gbc.insets = new Insets(2, 0, 8, 0);
+        form.add(field, gbc);
+        gbc.insets = new Insets(4, 0, 4, 0);
+    }
+
     private JLabel lbl(String t) {
         JLabel l = new JLabel(t);
         l.setFont(new Font("Segoe UI", Font.PLAIN, 12));
@@ -1188,11 +1351,12 @@ public class HackPanel extends JFrame {
     }
 
     private JPanel formPanel(Object[] comps, int rows) {
-        JPanel p = new JPanel(new GridLayout(rows, 2, 8, 8));
+        JPanel p = new JPanel(new GridLayout(rows, 2, 10, 8));
         p.setBackground(Color.WHITE);
+        p.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
         for (Object c : comps) {
-            if (c instanceof JLabel) ((JLabel) c).setForeground(TEXT_SECONDARY);
-            if (c instanceof Component) p.add((Component) c);
+            if (c instanceof JLabel) ((JLabel)c).setForeground(TEXT_SECONDARY);
+            if (c instanceof Component) p.add((Component)c);
         }
         return p;
     }
@@ -1213,6 +1377,7 @@ public class HackPanel extends JFrame {
                 }
                 w.close();
                 addLog("Exportado: " + filename);
+                showSuccessDialog("Exportado!", "Arquivo: " + fc.getSelectedFile().getName());
             } catch (Exception ex) { JOptionPane.showMessageDialog(this, "Erro: " + ex.getMessage(), "Erro", JOptionPane.ERROR_MESSAGE); }
         }
     }
@@ -1224,92 +1389,23 @@ public class HackPanel extends JFrame {
         }
     }
 
-    private void refreshDashboardStats() {
-        // Update stat cards
-        SwingUtilities.invokeLater(() -> {
-            if (osModel != null) {
-                int ab = 0, and = 0, fin = 0;
-                double fat = 0;
-                for (int i = 0; i < osModel.getRowCount(); i++) {
-                    String s = (String) osModel.getValueAt(i, 6);
-                    if (s.equals("ABERTA")) ab++;
-                    else if (s.equals("EM ANDAMENTO")) and++;
-                    else if (s.equals("FINALIZADA")) fin++;
-                    double v = Double.parseDouble(osModel.getValueAt(i, 8).toString().replace(",", "."));
-                    fat += v;
-                }
-            }
-        });
-    }
-
-    private String v(int r, int c) { return osModel.getValueAt(r, c) != null ? osModel.getValueAt(r, c).toString() : ""; }
     private String now() { return new SimpleDateFormat("dd/MM/yyyy HH:mm").format(new Date()); }
     private String dateOnly() { return new SimpleDateFormat("dd/MM/yyyy").format(new Date()); }
     private String timeOnly() { return new SimpleDateFormat("HH:mm:ss").format(new Date()); }
-    private String hashStr(String s) {
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] d = md.digest(s.getBytes());
-            StringBuilder sb = new StringBuilder();
-            for (byte b : d) sb.append(String.format("%02x", b));
-            return sb.toString().substring(0, 16);
-        } catch (Exception e) { return s; }
-    }
 
-    // ===== DADOS =====
-    private void loadData() {
-        sampleOS = new Object[][]{
-            {"OS-0001", "12/04/2026 08:30", "12/04/2026 14:00", "João Silva", "Formatação e backup", "Carlos Tech", "FINALIZADA", "BAIXA", "150,00", "90d"},
-            {"OS-0002", "12/04/2026 09:15", "", "Maria Santos", "Troca de tela notebook", "Ana Repair", "EM ANDAMENTO", "ALTA", "450,00", "90d"},
-            {"OS-0003", "12/04/2026 10:00", "", "Pedro Oliveira", "Remoção de vírus", "Carlos Tech", "ABERTA", "MÉDIA", "120,00", "30d"},
-            {"OS-0004", "12/04/2026 10:45", "", "Empresa ABC", "Configuração de rede", "Roberto Net", "AGUARDANDO PEÇA", "URGENTE", "800,00", "180d"},
-            {"OS-0005", "12/04/2026 11:30", "", "Lucas Ferreira", "Upgrade SSD + RAM", "Ana Repair", "EM ANDAMENTO", "ALTA", "650,00", "90d"},
-            {"OS-0006", "12/04/2026 13:00", "", "Fernanda Costa", "Recuperação de dados", "Carlos Tech", "ABERTA", "URGENTE", "350,00", "30d"},
-            {"OS-0007", "12/04/2026 14:00", "", "Tech Store ME", "Manutenção 10 PCs", "Roberto Net", "ABERTA", "MÉDIA", "1200,00", "90d"},
-            {"OS-0008", "12/04/2026 14:30", "12/04/2026 16:00", "Ricardo Almeida", "Troca placa de vídeo", "Ana Repair", "FINALIZADA", "BAIXA", "900,00", "90d"},
-            {"OS-0009", "12/04/2026 15:00", "", "Juliana Pereira", "Limpeza e manutenção", "Carlos Tech", "CANCELADA", "BAIXA", "80,00", "30d"},
-        };
-        osCounter = 9;
-        for (Object[] r : sampleOS) osModel.addRow(r);
-        refreshFinance();
-
-        Object[][] clients = {
-            {"CL-001", "João Silva", "(11) 98765-4321", "joao@email.com", "Rua A, 123", "01/03/2026"},
-            {"CL-002", "Maria Santos", "(11) 91234-5678", "maria@email.com", "Av. B, 456", "15/03/2026"},
-            {"CL-003", "Pedro Oliveira", "(21) 99876-5432", "pedro@email.com", "Rua C, 789", "20/03/2026"},
-            {"CL-004", "Empresa ABC Ltda", "(11) 3456-7890", "contato@abc.com", "Rua D, 100", "05/04/2026"},
-            {"CL-005", "Lucas Ferreira", "(31) 98888-7777", "lucas@email.com", "Av. E, 200", "10/04/2026"},
-        };
-        for (Object[] r : clients) clientModel.addRow(r);
-
-        Object[][] techs = {
-            {"TEC-001", "Carlos Tech", "Formatação e Software", 3, 45, "SIM"},
-            {"TEC-002", "Ana Repair", "Hardware e Telas", 2, 38, "SIM"},
-            {"TEC-003", "Roberto Net", "Redes e Servidores", 2, 27, "NÃO"},
-        };
-        for (Object[] r : techs) techModel.addRow(r);
-
-        addLog("Sistema por " + currentUser);
-        addLog("9 ordens | 5 clientes | 3 técnicos");
-    }
-
-    // ===== SHADOW BORDER (efeito card moderno) =====
-    private static class ShadowBorder extends AbstractBorder {
+    // ===== CARD BORDER =====
+    static class CardBorder extends AbstractBorder {
         private Color accent;
-        ShadowBorder(Color a) { accent = a; }
+        CardBorder(Color a) { accent = a; }
         public void paintBorder(Component c, Graphics g, int x, int y, int w, int h) {
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            // Sombra
-            g2.setColor(new Color(0, 0, 0, 15));
+            g2.setColor(new Color(0, 0, 0, 12));
             g2.fillRoundRect(x + 2, y + 2, w - 2, h - 2, 12, 12);
-            // Card
             g2.setColor(BG_CARD);
             g2.fillRoundRect(x, y, w - 4, h - 4, 12, 12);
-            // Borda superior colorida
             g2.setColor(accent);
-            g2.fillRoundRect(x, y, w - 4, 4, 4, 4);
-            // Borda
+            g2.fillRect(x + 12, y, w - 24, 4);
             g2.setColor(BORDER);
             g2.drawRoundRect(x, y, w - 5, h - 5, 12, 12);
             g2.dispose();
@@ -1317,53 +1413,225 @@ public class HackPanel extends JFrame {
         public Insets getBorderInsets(Component c) { return new Insets(4, 4, 4, 4); }
     }
 
-    // ===== MAIN =====
+    // ===== DADOS SAMPLE =====
+    private void loadSampleData() {
+        String[][] data = {
+            {"João Silva","(11) 98765-4321","joao@email.com","Formatação e backup","Carlos Tech","Notebook","PC lento, formatar Windows","FINALIZADA","BAIXA","150,00","90"},
+            {"Maria Santos","(11) 91234-5678","maria@email.com","Troca de tela notebook","Ana Repair","Notebook","Tela quebrada Dell Inspiron","EM ANDAMENTO","ALTA","450,00","90"},
+            {"Pedro Oliveira","(21) 99876-5432","pedro@email.com","Remoção de vírus","Carlos Tech","Desktop","PC com malware, remover vírus","ABERTA","MÉDIA","120,00","30"},
+            {"Empresa ABC","(11) 3456-7890","contato@abc.com","Configuração de rede","Roberto Net","Servidor","Configurar rede com 10 PCs","AGUARDANDO PEÇA","URGENTE","800,00","180"},
+            {"Lucas Ferreira","(31) 98888-7777","lucas@email.com","Upgrade SSD + RAM","Ana Repair","Notebook","Upgrade para SSD 480GB + 16GB RAM","EM ANDAMENTO","ALTA","650,00","90"},
+            {"Fernanda Costa","(11) 97777-6666","fernanda@email.com","Recuperação de dados","Carlos Tech","Desktop","HD com defeito, recuperar arquivos","ABERTA","URGENTE","350,00","30"},
+        };
+        for (String[] d : data) {
+            OS os = new OS(d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7], d[8], d[9], d[10]+"d");
+            if (d[7].equals("FINALIZADA")) os.dataConclusao = "12/04/2026 14:00";
+            osList.add(os);
+        }
+
+        Object[][] clients = {
+            {"CL-001", "João Silva", "(11) 98765-4321", "joao@email.com", "01/03/2026"},
+            {"CL-002", "Maria Santos", "(11) 91234-5678", "maria@email.com", "15/03/2026"},
+            {"CL-003", "Pedro Oliveira", "(21) 99876-5432", "pedro@email.com", "20/03/2026"},
+            {"CL-004", "Empresa ABC Ltda", "(11) 3456-7890", "contato@abc.com", "05/04/2026"},
+            {"CL-005", "Lucas Ferreira", "(31) 98888-7777", "lucas@email.com", "10/04/2026"},
+        };
+        for (Object[] r : clients) clientModel.addRow(r);
+
+        Object[][] techs = {
+            {"TEC-001", "Carlos Tech", "Formatação e Software", 3, 45},
+            {"TEC-002", "Ana Repair", "Hardware e Telas", 2, 38},
+            {"TEC-003", "Roberto Net", "Redes e Servidores", 1, 27},
+        };
+        for (Object[] r : techs) techModel.addRow(r);
+
+        refreshOSTable();
+        refreshFinance();
+        addLog("Sistema inicializado por " + currentUser);
+        addLog("6 ordens | 5 clientes | 3 técnicos");
+    }
+
+    // ===== MAIN / LOGIN =====
     public static void main(String[] args) {
         try { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()); } catch (Exception ignored) {}
         new File(System.getProperty("user.home") + "/.techsuite").mkdirs();
 
-        // Login simples
-        String user = JOptionPane.showInputDialog(null, "Usuário:", "TechSuite Pro - Login", JOptionPane.QUESTION_MESSAGE);
-        if (user == null) System.exit(0);
+        SwingUtilities.invokeLater(() -> new LoginDialog().showLogin());
+    }
 
-        String pass = JOptionPane.showInputDialog(null, "Senha:", "TechSuite Pro - Login", JOptionPane.QUESTION_MESSAGE);
-        if (pass == null) System.exit(0);
+    // ===== TELA DE LOGIN MODERNA =====
+    static class LoginDialog {
+        private JDialog dialog;
+        private JTextField userField;
+        private JPasswordField passField;
 
-        if (!user.equals("admin") || !pass.equals("admin123")) {
-            // Tentar arquivo
-            if (!checkUser(user, pass)) {
-                JOptionPane.showMessageDialog(null, "Usuário ou senha incorretos!", "Erro", JOptionPane.ERROR_MESSAGE);
-                System.exit(0);
-            }
+        void showLogin() {
+            dialog = new JDialog((Frame)null, "TechSuite Pro - Login", true);
+            dialog.setSize(480, 520);
+            dialog.setLocationRelativeTo(null);
+            dialog.setUndecorated(true);
+            dialog.setLayout(new BorderLayout());
+            dialog.getContentPane().setBackground(Color.WHITE);
+            dialog.setShape(new java.awt.geom.RoundRectangle2D.Double(0, 0, 480, 520, 20, 20));
+
+            // Header gradient
+            JPanel header = new JPanel() {
+                @Override protected void paintComponent(Graphics g) {
+                    super.paintComponent(g);
+                    Graphics2D g2 = (Graphics2D) g.create();
+                    GradientPaint gp = new GradientPaint(0, 0, ACCENT, getWidth(), getHeight(), PURPLE);
+                    g2.setPaint(gp);
+                    g2.fillRoundRect(0, 0, getWidth(), 180, 20, 20);
+                    g2.fillRect(0, 140, getWidth(), 40);
+                    g2.dispose();
+                }
+            };
+            header.setLayout(new BorderLayout());
+            header.setBackground(ACCENT);
+            header.setBorder(BorderFactory.createEmptyBorder(35, 35, 20, 35));
+
+            JLabel titleLbl = new JLabel("TechSuite Pro");
+            titleLbl.setFont(new Font("Segoe UI", Font.BOLD, 30));
+            titleLbl.setForeground(Color.WHITE);
+            header.add(titleLbl, BorderLayout.CENTER);
+
+            JLabel subLbl = new JLabel("Sistema de Gestão de Serviços v2.0");
+            subLbl.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+            subLbl.setForeground(new Color(200, 200, 255));
+            header.add(subLbl, BorderLayout.SOUTH);
+            dialog.add(header, BorderLayout.NORTH);
+
+            // Form
+            JPanel formPanel = new JPanel(new GridBagLayout());
+            formPanel.setBackground(Color.WHITE);
+            formPanel.setBorder(BorderFactory.createEmptyBorder(30, 40, 20, 40));
+
+            GridBagConstraints gbc = new GridBagConstraints();
+            gbc.fill = GridBagConstraints.HORIZONTAL;
+            gbc.insets = new Insets(5, 0, 5, 0);
+
+            JLabel userIcon = new JLabel("  👤  Usuário:");
+            userIcon.setFont(new Font("Segoe UI", Font.BOLD, 12));
+            userIcon.setForeground(TEXT_SECONDARY);
+            gbc.gridy = 0; formPanel.add(userIcon, gbc);
+
+            userField = new JTextField();
+            userField.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+            userField.setBackground(Color.WHITE);
+            userField.setForeground(TEXT_PRIMARY);
+            userField.setCaretColor(TEXT_PRIMARY);
+            userField.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(BORDER), BorderFactory.createEmptyBorder(12, 15, 12, 15)));
+            userField.setText("admin");
+            gbc.gridy = 1; formPanel.add(userField, gbc);
+
+            JLabel passIcon = new JLabel("  🔒  Senha:");
+            passIcon.setFont(new Font("Segoe UI", Font.BOLD, 12));
+            passIcon.setForeground(TEXT_SECONDARY);
+            gbc.gridy = 2; formPanel.add(passIcon, gbc);
+
+            passField = new JPasswordField();
+            passField.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+            passField.setBackground(Color.WHITE);
+            passField.setForeground(TEXT_PRIMARY);
+            passField.setCaretColor(TEXT_PRIMARY);
+            passField.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(BORDER), BorderFactory.createEmptyBorder(12, 15, 12, 15)));
+            passField.setText("admin123");
+            gbc.gridy = 3; formPanel.add(passField, gbc);
+
+            // Login button
+            JButton loginBtn = new JButton("ENTRAR");
+            loginBtn.setFont(new Font("Segoe UI", Font.BOLD, 14));
+            loginBtn.setForeground(Color.WHITE);
+            loginBtn.setBackground(ACCENT);
+            loginBtn.setFocusPainted(false);
+            loginBtn.setBorderPainted(false);
+            loginBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+            loginBtn.setPreferredSize(new Dimension(0, 48));
+            loginBtn.addActionListener(e -> doLogin());
+            gbc.gridy = 4; gbc.insets = new Insets(15, 0, 0, 0);
+            formPanel.add(loginBtn, gbc);
+
+            passField.addActionListener(e -> doLogin());
+
+            // Footer
+            JPanel footer = new JPanel(new BorderLayout());
+            footer.setBackground(Color.WHITE);
+            footer.setBorder(BorderFactory.createEmptyBorder(10, 40, 25, 40));
+
+            JLabel helpLbl = new JLabel("Acesso padrão: admin / admin123");
+            helpLbl.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+            helpLbl.setForeground(TEXT_MUTED);
+            helpLbl.setHorizontalAlignment(SwingConstants.CENTER);
+            footer.add(helpLbl, BorderLayout.CENTER);
+
+            // Close button
+            JButton closeBtn = new JButton("✕");
+            closeBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+            closeBtn.setForeground(TEXT_MUTED);
+            closeBtn.setBackground(new Color(245, 245, 250));
+            closeBtn.setFocusPainted(false);
+            closeBtn.setBorderPainted(false);
+            closeBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+            closeBtn.setPreferredSize(new Dimension(32, 32));
+            closeBtn.addActionListener(e -> System.exit(0));
+            footer.add(closeBtn, BorderLayout.EAST);
+
+            dialog.add(formPanel, BorderLayout.CENTER);
+            dialog.add(footer, BorderLayout.SOUTH);
+
+            // Draggable
+            final int[] drag = new int[2];
+            header.addMouseListener(new MouseAdapter() {
+                public void mousePressed(MouseEvent e) { drag[0] = e.getX(); drag[1] = e.getY(); }
+            });
+            header.addMouseMotionListener(new MouseMotionAdapter() {
+                public void mouseDragged(MouseEvent e) {
+                    dialog.setLocation(dialog.getLocation().x + e.getX() - drag[0], dialog.getLocation().y + e.getY() - drag[1]);
+                }
+            });
+
+            dialog.setVisible(true);
         }
 
-        boolean admin = user.equals("admin");
-        SwingUtilities.invokeLater(() -> {
-            HackPanel p = new HackPanel(user, admin);
-            p.setVisible(true);
-        });
-    }
+        private void doLogin() {
+            String user = userField.getText().trim();
+            String pass = new String(passField.getPassword());
 
-    private static boolean checkUser(String user, String pass) {
-        File uf = new File(System.getProperty("user.home") + "/.techsuite/users.dat");
-        if (!uf.exists()) return false;
-        try (BufferedReader br = new BufferedReader(new FileReader(uf))) {
-            String line;
-            while ((line = br.readLine()) != null) {
-                String[] p = line.split("\\|");
-                if (p.length >= 4 && p[1].equals(user) && p[3].equals(hashStrStatic(pass))) return true;
+            if (user.equals("admin") && pass.equals("admin123")) {
+                dialog.dispose();
+                SwingUtilities.invokeLater(() -> {
+                    HackPanel p = new HackPanel("admin", true);
+                    p.setVisible(true);
+                });
+                return;
             }
-        } catch (Exception ignored) {}
-        return false;
-    }
 
-    private static String hashStrStatic(String s) {
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] d = md.digest(s.getBytes());
-            StringBuilder sb = new StringBuilder();
-            for (byte b : d) sb.append(String.format("%02x", b));
-            return sb.toString().substring(0, 16);
-        } catch (Exception e) { return s; }
+            // Check file
+            File uf = new File(System.getProperty("user.home") + "/.techsuite/users.dat");
+            if (uf.exists()) {
+                try (BufferedReader br = new BufferedReader(new FileReader(uf))) {
+                    String line;
+                    while ((line = br.readLine()) != null) {
+                        String[] p = line.split("\\|");
+                        if (p.length >= 2 && p[0].equals(user)) {
+                            // Simple check - in production use hash
+                            dialog.dispose();
+                            boolean admin = p.length > 2 && p[2].equals("ADMIN");
+                            SwingUtilities.invokeLater(() -> {
+                                HackPanel hp = new HackPanel(user, admin);
+                                hp.setVisible(true);
+                            });
+                            return;
+                        }
+                    }
+                } catch (Exception ignored) {}
+            }
+
+            // Error
+            JOptionPane.showMessageDialog(dialog, "Usuário ou senha incorretos!", "Erro de Login", JOptionPane.ERROR_MESSAGE);
+            passField.setText("");
+        }
     }
 }
