@@ -1601,10 +1601,8 @@ public class HackPanel extends JFrame {
 
             if (user.equals("admin") && pass.equals("admin123")) {
                 dialog.dispose();
-                SwingUtilities.invokeLater(() -> {
-                    HackPanel p = new HackPanel("admin", true);
-                    p.setVisible(true);
-                });
+                HackPanel p = new HackPanel("admin", true);
+                p.setVisible(true);
                 return;
             }
 
@@ -1616,13 +1614,10 @@ public class HackPanel extends JFrame {
                     while ((line = br.readLine()) != null) {
                         String[] p = line.split("\\|");
                         if (p.length >= 2 && p[0].equals(user)) {
-                            // Simple check - in production use hash
                             dialog.dispose();
                             boolean admin = p.length > 2 && p[2].equals("ADMIN");
-                            SwingUtilities.invokeLater(() -> {
-                                HackPanel hp = new HackPanel(user, admin);
-                                hp.setVisible(true);
-                            });
+                            HackPanel hp = new HackPanel(user, admin);
+                            hp.setVisible(true);
                             return;
                         }
                     }
