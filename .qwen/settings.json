@@ -13,7 +13,10 @@
       "Bash(tasklist)",
       "Bash(findstr *)",
       "Bash(timeout *)",
-      "Bash(del *)"
+      "Bash(del *)",
+      "Bash(curl *)",
+      "Bash(powershell *)",
+      "Bash(testar-banco.bat)"
     ]
   },
   "$version": 3

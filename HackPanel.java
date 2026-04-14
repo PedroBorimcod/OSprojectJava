@@ -7,6 +7,7 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.ArrayList;
 import java.io.*;
+import java.sql.*;
 
 public class HackPanel extends JFrame {
 
@@ -33,6 +34,7 @@ public class HackPanel extends JFrame {
         String id, dataAbertura, dataConclusao, cliente, telefone, email;
         String servico, tecnico, equipamento, descricao;
         String status, prioridade, valor, garantia;
+        private boolean saved = false;
 
         OS(String cliente, String telefone, String email, String servico,
            String tecnico, String equipamento, String descricao,
@@ -52,6 +54,9 @@ public class HackPanel extends JFrame {
             this.valor = valor;
             this.garantia = garantia;
         }
+
+        boolean existsInDatabase() { return saved; }
+        void setSaved(boolean saved) { this.saved = saved; }
 
         Object[] toRow() {
             return new Object[]{id, dataAbertura, dataConclusao, cliente, servico, tecnico, status, prioridade, valor, garantia};
@@ -93,7 +98,8 @@ public class HackPanel extends JFrame {
         if (admin) userModel = new DefaultTableModel(USER_COLS, 0) { public boolean isCellEditable(int r, int c) { return false; }};
 
         initFolders();
-        loadSampleData();
+        DatabaseManager.initializeDatabase();
+        loadDataFromDatabase();
         setupFrame();
     }
 
@@ -612,6 +618,7 @@ public class HackPanel extends JFrame {
                 (String)cPr.getSelectedItem(), vl, fGr.getText().trim() + "d");
 
             osList.add(os);
+            DatabaseManager.saveOS(os);
             refreshOSTable();
             refreshFinance();
             addLog("Nova OS: " + os.id + " - " + cl);
@@ -697,6 +704,7 @@ public class HackPanel extends JFrame {
             os.descricao = fDs.getText().trim(); os.status = (String)cSt.getSelectedItem();
             os.prioridade = (String)cPr.getSelectedItem();
             os.valor = fVl.getText().trim(); os.garantia = fGr.getText().trim() + "d";
+            DatabaseManager.saveOS(os);
             refreshOSTable(); refreshFinance();
             addLog("OS editada: " + os.id);
             dlg.dispose();
@@ -721,6 +729,7 @@ public class HackPanel extends JFrame {
         if (JOptionPane.showConfirmDialog(this, "Finalizar OS " + os.id + "?", "Confirmar", JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION) {
             os.status = "FINALIZADA";
             os.dataConclusao = now();
+            DatabaseManager.saveOS(os);
             refreshOSTable(); refreshFinance();
             addLog("OS finalizada: " + os.id);
             showSuccess("OS Finalizada!", os.id);
@@ -732,6 +741,7 @@ public class HackPanel extends JFrame {
         if (row == -1) { JOptionPane.showMessageDialog(this, "Selecione uma OS.", "Atenção", JOptionPane.WARNING_MESSAGE); return; }
         OS os = osList.get(row);
         if (JOptionPane.showConfirmDialog(this, "Excluir OS " + os.id + "?", "Confirmar", JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION) {
+            DatabaseManager.deleteOS(os.id);
             osList.remove(os);
             refreshOSTable(); refreshFinance();
             detailsArea.setText("");
@@ -803,7 +813,9 @@ public class HackPanel extends JFrame {
         JTextField n = inputField(), t = inputField(), e = inputField();
         JPanel p = formPanel(new Object[]{lbl("Nome:"), n, lbl("Telefone:"), t, lbl("Email:"), e}, 3);
         if (JOptionPane.showConfirmDialog(this, p, "Novo Cliente", JOptionPane.OK_CANCEL_OPTION) == JOptionPane.OK_OPTION) {
-            clientModel.addRow(new Object[]{String.format("CL-%03d", clientModel.getRowCount()+1), n.getText(), t.getText(), e.getText(), dateOnly()});
+            String id = String.format("CL-%03d", clientModel.getRowCount()+1);
+            clientModel.addRow(new Object[]{id, n.getText(), t.getText(), e.getText(), dateOnly()});
+            DatabaseManager.saveCliente(id, n.getText(), t.getText(), e.getText(), dateOnly());
             addLog("Cliente: " + n.getText());
         }
     }
@@ -812,6 +824,8 @@ public class HackPanel extends JFrame {
         int r = clientTable.getSelectedRow();
         if (r == -1) { JOptionPane.showMessageDialog(this, "Selecione um cliente.", "Atenção", JOptionPane.WARNING_MESSAGE); return; }
         if (JOptionPane.showConfirmDialog(this, "Excluir?", "Confirmar", JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION) {
+            String id = clientModel.getValueAt(r, 0).toString();
+            DatabaseManager.deleteCliente(id);
             addLog("Cliente excluído: " + clientModel.getValueAt(r, 1));
             clientModel.removeRow(r);
         }
@@ -822,7 +836,9 @@ public class HackPanel extends JFrame {
         JTextField n = inputField(), e = inputField();
         JPanel p = formPanel(new Object[]{lbl("Nome:"), n, lbl("Especialidade:"), e}, 2);
         if (JOptionPane.showConfirmDialog(this, p, "Novo Técnico", JOptionPane.OK_CANCEL_OPTION) == JOptionPane.OK_OPTION) {
-            techModel.addRow(new Object[]{String.format("TEC-%03d", techModel.getRowCount()+1), n.getText(), e.getText(), 0, 0});
+            String id = String.format("TEC-%03d", techModel.getRowCount()+1);
+            techModel.addRow(new Object[]{id, n.getText(), e.getText(), 0, 0});
+            DatabaseManager.saveTecnico(id, n.getText(), e.getText(), 0, 0);
             addLog("Técnico: " + n.getText());
         }
     }
@@ -831,6 +847,8 @@ public class HackPanel extends JFrame {
         int r = techTable.getSelectedRow();
         if (r == -1) { JOptionPane.showMessageDialog(this, "Selecione um técnico.", "Atenção", JOptionPane.WARNING_MESSAGE); return; }
         if (JOptionPane.showConfirmDialog(this, "Excluir?", "Confirmar", JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION) {
+            String id = techModel.getValueAt(r, 0).toString();
+            DatabaseManager.deleteTecnico(id);
             addLog("Técnico excluído");
             techModel.removeRow(r);
         }
@@ -1216,36 +1234,27 @@ public class HackPanel extends JFrame {
     private String dateOnly() { return new SimpleDateFormat("dd/MM/yyyy").format(new Date()); }
     private String timeOnly() { return new SimpleDateFormat("HH:mm:ss").format(new Date()); }
 
-    // ===== DADOS SAMPLE =====
-    private void loadSampleData() {
-        String[][] data = {
-            {"João Silva","(11)98765-4321","joao@email.com","Formatação e backup","Carlos Tech","Notebook","Formatar Windows","FINALIZADA","BAIXA","150,00","90"},
-            {"Maria Santos","(11)91234-5678","maria@email.com","Troca de tela","Ana Repair","Notebook","Tela quebrada","EM ANDAMENTO","ALTA","450,00","90"},
-            {"Pedro Oliveira","(21)99876-5432","pedro@email.com","Remoção de vírus","Carlos Tech","Desktop","PC com malware","ABERTA","MÉDIA","120,00","30"},
-            {"Empresa ABC","(11)3456-7890","contato@abc.com","Configuração de rede","Roberto Net","Servidor","Rede 10 PCs","AGUARDANDO PEÇA","URGENTE","800,00","180"},
-            {"Lucas Ferreira","(31)98888-7777","lucas@email.com","Upgrade SSD + RAM","Ana Repair","Notebook","SSD 480GB + 16GB","EM ANDAMENTO","ALTA","650,00","90"},
-            {"Fernanda Costa","(11)97777-6666","fernanda@email.com","Recuperação de dados","Carlos Tech","Desktop","HD com defeito","ABERTA","URGENTE","350,00","30"},
-        };
-        for (String[] d : data) {
-            OS os = new OS(d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7], d[8], d[9], d[10]+"d");
-            if (d[7].equals("FINALIZADA")) os.dataConclusao = "12/04/2026 14:00";
-            osList.add(os);
-        }
-
-        clientModel.addRow(new Object[]{"CL-001", "João Silva", "(11) 98765-4321", "joao@email.com", "01/03/2026"});
-        clientModel.addRow(new Object[]{"CL-002", "Maria Santos", "(11) 91234-5678", "maria@email.com", "15/03/2026"});
-        clientModel.addRow(new Object[]{"CL-003", "Pedro Oliveira", "(21) 99876-5432", "pedro@email.com", "20/03/2026"});
-        clientModel.addRow(new Object[]{"CL-004", "Empresa ABC", "(11) 3456-7890", "contato@abc.com", "05/04/2026"});
-        clientModel.addRow(new Object[]{"CL-005", "Lucas Ferreira", "(31) 98888-7777", "lucas@email.com", "10/04/2026"});
-
-        techModel.addRow(new Object[]{"TEC-001", "Carlos Tech", "Formatação e Software", 3, 45});
-        techModel.addRow(new Object[]{"TEC-002", "Ana Repair", "Hardware e Telas", 2, 38});
-        techModel.addRow(new Object[]{"TEC-003", "Roberto Net", "Redes e Servidores", 1, 27});
-
+    // ===== CARREGAR DADOS DO BANCO =====
+    private void loadDataFromDatabase() {
+        // Carregar OS do banco
+        osList = new ArrayList<>(DatabaseManager.loadAllOS());
         refreshOSTable();
         refreshFinance();
-        addLog("Sistema por " + currentUser);
-        addLog("6 ordens | 5 clientes | 3 técnicos");
+        
+        // Carregar Clientes do banco
+        clientModel.setRowCount(0);
+        for (Object[] cliente : DatabaseManager.loadAllClientes()) {
+            clientModel.addRow(cliente);
+        }
+        
+        // Carregar Técnicos do banco
+        techModel.setRowCount(0);
+        for (Object[] tecnico : DatabaseManager.loadAllTecnicos()) {
+            techModel.addRow(tecnico);
+        }
+        
+        addLog("Sistema iniciado por " + currentUser);
+        addLog(osList.size() + " ordens | " + clientModel.getRowCount() + " clientes | " + techModel.getRowCount() + " técnicos");
     }
 
     // ===== MAIN / LOGIN =====
